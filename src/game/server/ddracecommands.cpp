@@ -534,14 +534,19 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 		Pos = pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
 	}
 
-	pChr->SetPosition(Pos);
-	pChr->m_Pos = Pos;
-	pChr->m_PrevPos = Pos;
-	pChr->ResetJumps();
-	pChr->SetVelocity(vec2(0, 0));
-
 	if(ResetRace)
-		pChr->m_DDRaceState = ERaceState::CHEATED;
+	{
+		pSelf->Teleport(pChr, Pos);
+		pChr->ResetJumps();
+		pChr->Unfreeze();
+		pChr->SetVelocity(vec2(0, 0));
+	}
+	else
+	{
+		pChr->SetPosition(Pos);
+		pChr->m_Pos = Pos;
+		pChr->m_PrevPos = Pos;
+	}
 
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "teleported client %d to tile %.0f %.0f%s", ClientId, Pos.x / 32.0f, Pos.y / 32.0f, ResetRace ? " and reset race" : "");
