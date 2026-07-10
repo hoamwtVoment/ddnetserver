@@ -500,6 +500,13 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 	const int ClientId = pResult->NumArguments() >= 3 ? pResult->GetInteger(2) : pResult->m_ClientId;
 	const bool ResetRace = pResult->NumArguments() >= 4 ? pResult->GetInteger(3) != 0 : false;
 	const int AuthLevel = pSelf->Server()->GetAuthedState(pResult->m_ClientId);
+	CPlayer *pPlayer = pSelf->m_apPlayers[pResult->m_ClientId];
+
+	if(pResult->NumArguments() == 1 || !pPlayer)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "usage: ho_tp [x] [y] [id] [reset]");
+		return;
+	}
 
 	if(!CheckClientId(ClientId))
 	{
@@ -520,7 +527,13 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
-	const vec2 Pos(pResult->GetInteger(0) * 32.0f, pResult->GetInteger(1) * 32.0f);
+	vec2 Pos = pResult->NumArguments() >= 2 ? vec2(pResult->GetInteger(0) * 32.0f, pResult->GetInteger(1) * 32.0f) : pPlayer->m_ViewPos;
+	if(pResult->NumArguments() == 0 && ClientId == pResult->m_ClientId && !pPlayer->IsPaused() && pChr->IsAlive())
+	{
+		vec2 Target = vec2(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
+		Pos = pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
+	}
+
 	pChr->SetPosition(Pos);
 	pChr->m_Pos = Pos;
 	pChr->m_PrevPos = Pos;
