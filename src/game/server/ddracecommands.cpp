@@ -520,7 +520,7 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
-	const vec2 Pos(pResult->GetInteger(0), pResult->GetInteger(1));
+	const vec2 Pos(pResult->GetInteger(0) * 32.0f, pResult->GetInteger(1) * 32.0f);
 	pChr->SetPosition(Pos);
 	pChr->m_Pos = Pos;
 	pChr->m_PrevPos = Pos;
@@ -531,7 +531,7 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 		pChr->m_DDRaceState = ERaceState::CHEATED;
 
 	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "teleported client %d to %.0f %.0f%s", ClientId, Pos.x, Pos.y, ResetRace ? " and reset race" : "");
+	str_format(aBuf, sizeof(aBuf), "teleported client %d to tile %.0f %.0f%s", ClientId, Pos.x / 32.0f, Pos.y / 32.0f, ResetRace ? " and reset race" : "");
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", aBuf);
 }
 
