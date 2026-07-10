@@ -690,6 +690,43 @@ void CGameContext::ConHoRaceTime(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", aBuf);
 }
 
+void CGameContext::ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->GetInteger(0);
+	const int Killer = pResult->NumArguments() >= 2 ? pResult->GetInteger(1) : ClientId;
+	const int Weapon = pResult->NumArguments() >= 3 ? pResult->GetInteger(2) : WEAPON_WORLD;
+
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakedeath", "invalid client id");
+		return;
+	}
+	if(!CheckClientId(Killer) || !pSelf->m_apPlayers[Killer])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakedeath", "invalid killer id");
+		return;
+	}
+
+	CNetMsg_Sv_KillMsg Msg;
+	Msg.m_Killer = Killer;
+	Msg.m_Victim = ClientId;
+	Msg.m_Weapon = Weapon;
+	Msg.m_ModeSpecial = 0;
+	pSelf->Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(pChr)
+	{
+		pSelf->CreateSound(pChr->GetPos(), SOUND_PLAYER_DIE, pChr->TeamMask());
+		pSelf->CreateDeath(pChr->GetPos(), ClientId, pChr->TeamMask());
+	}
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "sent fake death victim=%d killer=%d weapon=%d", ClientId, Killer, Weapon);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakedeath", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

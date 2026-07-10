@@ -508,6 +508,7 @@ private:
 	static void ConHoSpeed(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoSpeedLimit(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoRaceTime(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);
