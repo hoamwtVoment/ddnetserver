@@ -88,7 +88,7 @@ void CGameContext::MoveCharacter(int ClientId, int X, int Y, bool Raw)
 void CGameContext::ConKillPlayer(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
-	if(!CheckClientId(pResult->m_ClientId))
+	if(pResult->m_ClientId != IConsole::CLIENT_ID_UNSPECIFIED && !CheckClientId(pResult->m_ClientId))
 		return;
 	int Victim = pResult->GetVictim();
 
@@ -460,8 +460,16 @@ void CGameContext::ConToCheckTeleporter(IConsole::IResult *pResult, void *pUserD
 void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
-	if(!CheckClientId(pResult->m_ClientId))
+	const bool FromServerConsole = pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED;
+	if(!FromServerConsole && !CheckClientId(pResult->m_ClientId))
 		return;
+
+	if(FromServerConsole && pResult->NumArguments() != 2)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "tele", "server console usage: tele [id] [id]");
+		return;
+	}
+
 	int Tele = pResult->NumArguments() == 2 ? pResult->GetInteger(0) : pResult->m_ClientId;
 	int TeleTo = pResult->NumArguments() ? pResult->GetInteger(pResult->NumArguments() - 1) : pResult->m_ClientId;
 	int AuthLevel = pSelf->Server()->GetAuthedState(pResult->m_ClientId);
@@ -473,13 +481,13 @@ void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 	}
 
 	CCharacter *pChr = pSelf->GetPlayerChar(Tele);
-	CPlayer *pPlayer = pSelf->m_apPlayers[pResult->m_ClientId];
+	CPlayer *pPlayer = FromServerConsole ? nullptr : pSelf->m_apPlayers[pResult->m_ClientId];
 	CCharacter *pTeleToChr = pSelf->GetPlayerChar(TeleTo);
 
-	if(pChr && pPlayer && pTeleToChr)
+	if(pChr && pTeleToChr)
 	{
 		vec2 Pos = pTeleToChr->GetPos();
-		if(pResult->NumArguments() == 0 && !pPlayer->IsPaused() && pChr->IsAlive())
+		if(pResult->NumArguments() == 0 && pPlayer && !pPlayer->IsPaused() && pChr->IsAlive())
 		{
 			vec2 Target = vec2(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
 			Pos = pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
@@ -494,15 +502,22 @@ void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
-	if(!CheckClientId(pResult->m_ClientId))
+	const bool FromServerConsole = pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED;
+	if(!FromServerConsole && !CheckClientId(pResult->m_ClientId))
 		return;
+
+	if(FromServerConsole && pResult->NumArguments() < 3)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "server console usage: ho_tp [x] [y] [id] [reset]");
+		return;
+	}
 
 	const int ClientId = pResult->NumArguments() >= 3 ? pResult->GetInteger(2) : pResult->m_ClientId;
 	const bool ResetRace = pResult->NumArguments() >= 4 ? pResult->GetInteger(3) != 0 : false;
 	const int AuthLevel = pSelf->Server()->GetAuthedState(pResult->m_ClientId);
-	CPlayer *pPlayer = pSelf->m_apPlayers[pResult->m_ClientId];
+	CPlayer *pPlayer = FromServerConsole ? nullptr : pSelf->m_apPlayers[pResult->m_ClientId];
 
-	if(pResult->NumArguments() == 1 || !pPlayer)
+	if(pResult->NumArguments() == 1 || (pResult->NumArguments() == 0 && !pPlayer))
 	{
 		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "usage: ho_tp [x] [y] [id] [reset]");
 		return;
