@@ -105,6 +105,9 @@ CGameContext::CGameContext(bool Resetting) :
 
 	m_pScore = nullptr;
 	std::fill(std::begin(m_aHoTileEnabled), std::end(m_aHoTileEnabled), true);
+	m_HoTpsInterval = 0;
+	m_HoTpsLastTick = 0;
+	m_HoTpsLastTime = time_get();
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1182,6 +1185,22 @@ void CGameContext::OnTick()
 	{
 		if(pPlayer)
 			pPlayer->PostPostTick();
+	}
+
+	if(m_HoTpsInterval > 0 && Server()->Tick() - m_HoTpsLastTick >= m_HoTpsInterval)
+	{
+		const int TickDelta = Server()->Tick() - m_HoTpsLastTick;
+		const int64_t Now = time_get();
+		const int64_t TimeDelta = Now - m_HoTpsLastTime;
+		if(TickDelta > 0 && TimeDelta > 0)
+		{
+			const double Tps = (double)TickDelta * (double)time_freq() / (double)TimeDelta;
+			char aBuf[64];
+			str_format(aBuf, sizeof(aBuf), "TPS: %.2f", Tps);
+			SendBroadcast(aBuf, -1);
+		}
+		m_HoTpsLastTick = Server()->Tick();
+		m_HoTpsLastTime = Now;
 	}
 
 	// update voting
@@ -3545,6 +3564,38 @@ void CGameContext::ConBroadcast(IConsole::IResult *pResult, void *pUserData)
 	pSelf->SendBroadcast(aBuf, -1);
 }
 
+void CGameContext::ConHoTps(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+
+	if(pResult->NumArguments() == 0)
+	{
+		char aBuf[128];
+		if(pSelf->m_HoTpsInterval > 0)
+			str_format(aBuf, sizeof(aBuf), "ho_tps is on, refresh every %d ticks", pSelf->m_HoTpsInterval);
+		else
+			str_copy(aBuf, "ho_tps is off");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tps", aBuf);
+		return;
+	}
+
+	const int Interval = pResult->GetInteger(0);
+	if(Interval <= 0)
+	{
+		pSelf->m_HoTpsInterval = 0;
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tps", "ho_tps off");
+		return;
+	}
+
+	pSelf->m_HoTpsInterval = Interval;
+	pSelf->m_HoTpsLastTick = pSelf->Server()->Tick();
+	pSelf->m_HoTpsLastTime = time_get();
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "ho_tps on, refresh every %d ticks", Interval);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tps", aBuf);
+}
+
 void CGameContext::ConSay(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -4195,6 +4246,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("server_alert", "r[message]", CFGFLAG_SERVER, ConServerAlert, this, "Send a server alert message to all players");
 	Console()->Register("mod_alert", "v[id] r[message]", CFGFLAG_SERVER, ConModAlert, this, "Send a moderator alert message to player");
 	Console()->Register("broadcast", "r[message]", CFGFLAG_SERVER, ConBroadcast, this, "Broadcast message");
+	Console()->Register("ho_tps", "?i[value]", CFGFLAG_SERVER, ConHoTps, this, "Show TPS in broadcast every value ticks, 0 disables");
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");

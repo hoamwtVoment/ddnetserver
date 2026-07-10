@@ -150,6 +150,9 @@ public:
 
 private:
 	bool m_aHoTileEnabled[NUM_HO_TILES];
+	int m_HoTpsInterval;
+	int m_HoTpsLastTick;
+	int64_t m_HoTpsLastTime;
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -175,6 +178,7 @@ private:
 	static void ConServerAlert(IConsole::IResult *pResult, void *pUserData);
 	static void ConModAlert(IConsole::IResult *pResult, void *pUserData);
 	static void ConBroadcast(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoTps(IConsole::IResult *pResult, void *pUserData);
 	static void ConSay(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeam(IConsole::IResult *pResult, void *pUserData);
