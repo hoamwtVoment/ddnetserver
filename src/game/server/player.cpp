@@ -759,6 +759,12 @@ int CPlayer::GetDefaultEmote() const
 	return m_DefEmote;
 }
 
+void CPlayer::SetDefaultEmote(int Emote)
+{
+	m_DefEmote = Emote;
+	m_OverrideEmoteReset = -1;
+}
+
 void CPlayer::OverrideDefaultEmote(int Emote, int Tick)
 {
 	m_OverrideEmote = Emote;

@@ -225,6 +225,7 @@ public:
 	int m_TimerType;
 
 	int GetDefaultEmote() const;
+	void SetDefaultEmote(int Emote);
 	void OverrideDefaultEmote(int Emote, int Tick);
 	bool CanOverrideDefaultEmote() const;
 

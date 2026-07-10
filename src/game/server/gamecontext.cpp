@@ -1,4 +1,4 @@
-/* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
+﻿/* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "gamecontext.h"
 
@@ -3551,6 +3551,144 @@ void CGameContext::ConSay(IConsole::IResult *pResult, void *pUserData)
 	pSelf->SendChat(-1, TEAM_ALL, pResult->GetString(0));
 }
 
+void CGameContext::ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->GetInteger(0);
+	const char *pField = pResult->GetString(1);
+	const char *pValue = pResult->GetString(2);
+
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_playerinfo", "invalid client id");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	auto SendClientInfo7 = [&]() {
+		if(!pSelf->m_apPlayers[ClientId])
+			return;
+
+		protocol7::CNetMsg_Sv_ClientDrop Drop;
+		Drop.m_ClientId = ClientId;
+		Drop.m_pReason = "";
+		Drop.m_Silent = true;
+
+		protocol7::CNetMsg_Sv_ClientInfo Info;
+		Info.m_ClientId = ClientId;
+		Info.m_pName = pSelf->Server()->ClientName(ClientId);
+		Info.m_Country = pSelf->Server()->ClientCountry(ClientId);
+		Info.m_pClan = pSelf->Server()->ClientClan(ClientId);
+		Info.m_Local = 0;
+		Info.m_Silent = true;
+		Info.m_Team = pSelf->m_apPlayers[ClientId]->GetTeam();
+
+		for(int Part = 0; Part < protocol7::NUM_SKINPARTS; Part++)
+		{
+			Info.m_apSkinPartNames[Part] = pSelf->m_apPlayers[ClientId]->m_TeeInfos.m_aaSkinPartNames[Part];
+			Info.m_aSkinPartColors[Part] = pSelf->m_apPlayers[ClientId]->m_TeeInfos.m_aSkinPartColors[Part];
+			Info.m_aUseCustomColors[Part] = pSelf->m_apPlayers[ClientId]->m_TeeInfos.m_aUseCustomColors[Part];
+		}
+
+		for(int i = 0; i < pSelf->Server()->MaxClients(); i++)
+		{
+			if(!pSelf->m_apPlayers[i] || !pSelf->Server()->IsSixup(i))
+				continue;
+
+			if(i == ClientId)
+			{
+				Info.m_Local = 1;
+				pSelf->Server()->SendPackMsg(&Info, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+				Info.m_Local = 0;
+			}
+			else
+			{
+				pSelf->Server()->SendPackMsg(&Drop, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+				pSelf->Server()->SendPackMsg(&Info, MSGFLAG_VITAL | MSGFLAG_NORECORD, i);
+			}
+		}
+	};
+
+	bool Updated = true;
+	if(str_comp_nocase(pField, "name") == 0)
+	{
+		if(pSelf->Server()->WouldClientNameChange(ClientId, pValue))
+		{
+			pSelf->Server()->SetClientName(ClientId, pValue);
+			if(!pSelf->m_apPlayers[ClientId])
+				return;
+			pPlayer = pSelf->m_apPlayers[ClientId];
+			pSelf->Score()->PlayerData(ClientId)->Reset();
+			pSelf->Server()->SetClientScore(ClientId, std::nullopt);
+			pSelf->Score()->LoadPlayerData(ClientId);
+		}
+		SendClientInfo7();
+	}
+	else if(str_comp_nocase(pField, "clan") == 0)
+	{
+		pSelf->Server()->SetClientClan(ClientId, pValue);
+		if(!pSelf->m_apPlayers[ClientId])
+			return;
+		SendClientInfo7();
+	}
+	else if(str_comp_nocase(pField, "skin") == 0)
+	{
+		pPlayer->m_TeeInfos = CTeeInfo(pValue, pPlayer->m_TeeInfos.m_UseCustomColor, pPlayer->m_TeeInfos.m_ColorBody, pPlayer->m_TeeInfos.m_ColorFeet);
+		pPlayer->m_TeeInfos.ToSixup();
+		pSelf->SendSkinChange7(ClientId);
+		SendClientInfo7();
+	}
+	else if(str_comp_nocase(pField, "emotion") == 0 || str_comp_nocase(pField, "emote") == 0)
+	{
+		int Emote = EMOTE_NORMAL;
+		if(str_comp_nocase(pValue, "angry") == 0)
+			Emote = EMOTE_ANGRY;
+		else if(str_comp_nocase(pValue, "blink") == 0 || str_comp_nocase(pValue, "close") == 0)
+			Emote = EMOTE_BLINK;
+		else if(str_comp_nocase(pValue, "happy") == 0)
+			Emote = EMOTE_HAPPY;
+		else if(str_comp_nocase(pValue, "pain") == 0)
+			Emote = EMOTE_PAIN;
+		else if(str_comp_nocase(pValue, "surprise") == 0)
+			Emote = EMOTE_SURPRISE;
+		else if(str_comp_nocase(pValue, "normal") == 0)
+			Emote = EMOTE_NORMAL;
+		else if(!str_toint(pValue, &Emote))
+		{
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_playerinfo", "unknown emotion, use normal|pain|happy|surprise|angry|blink");
+			return;
+		}
+
+		pPlayer->SetDefaultEmote(Emote);
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+			pChr->SetEmote(Emote, -1);
+	}
+	else if(str_comp_nocase(pField, "country") == 0 || str_comp_nocase(pField, "nation") == 0)
+	{
+		int Country = 0;
+		if(!str_toint(pValue, &Country))
+		{
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_playerinfo", "country must be a numeric ISO 3166-1 code");
+			return;
+		}
+		pSelf->Server()->SetClientCountry(ClientId, Country);
+		SendClientInfo7();
+	}
+	else
+	{
+		Updated = false;
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_playerinfo", "usage: ho_playerinfo [id] [name|clan|skin|emotion|country] [value]");
+	}
+
+	if(Updated)
+	{
+		pSelf->Server()->ExpireServerInfo();
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "updated client %d %s", ClientId, pField);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_playerinfo", aBuf);
+	}
+}
+
 void CGameContext::ConSetTeam(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -4058,6 +4196,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("mod_alert", "v[id] r[message]", CFGFLAG_SERVER, ConModAlert, this, "Send a moderator alert message to player");
 	Console()->Register("broadcast", "r[message]", CFGFLAG_SERVER, ConBroadcast, this, "Broadcast message");
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
+	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
 	Console()->Register("set_team_all", "i[team-id]", CFGFLAG_SERVER, ConSetTeamAll, this, "Set team for all players (spectators = -1, game = 0)");
 	Console()->Register("hot_reload", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConHotReload, this, "Reload the map while preserving the state of tees and teams");
