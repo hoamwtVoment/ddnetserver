@@ -3330,6 +3330,41 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 	CGameContext *pSelf = (CGameContext *)pUserData;
 	const char *pTile = pResult->GetString(0);
 
+	static const char *s_apHoTileNames[] = {"kill", "border", "freeze", "deepfreeze", "livefreeze", "tele", "speedup"};
+	static_assert(std::size(s_apHoTileNames) == NUM_HO_TILES);
+
+	if(str_comp_nocase(pTile, "all") == 0)
+	{
+		if(pResult->NumArguments() == 1)
+		{
+			for(int i = 0; i < NUM_HO_TILES; ++i)
+			{
+				char aBuf[128];
+				str_format(aBuf, sizeof(aBuf), "ho_tile %s is %s", s_apHoTileNames[i], pSelf->m_aHoTileEnabled[i] ? "on" : "off");
+				pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+			}
+			return;
+		}
+
+		const char *pState = pResult->GetString(1);
+		bool Enabled;
+		if(str_comp_nocase(pState, "on") == 0)
+			Enabled = true;
+		else if(str_comp_nocase(pState, "off") == 0)
+			Enabled = false;
+		else
+		{
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [all|kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
+			return;
+		}
+
+		std::fill(std::begin(pSelf->m_aHoTileEnabled), std::end(pSelf->m_aHoTileEnabled), Enabled);
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "ho_tile all %s", Enabled ? "on" : "off");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+		return;
+	}
+
 	EHoTile Tile;
 	const char *pTileName;
 	if(str_comp_nocase(pTile, "kill") == 0)
@@ -3369,7 +3404,7 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 	}
 	else
 	{
-		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [all|kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
 		return;
 	}
 
@@ -3389,7 +3424,7 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 		Enabled = false;
 	else
 	{
-		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [all|kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
 		return;
 	}
 
@@ -4010,7 +4045,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("tune_zone_leave", "i[zone] r[message]", CFGFLAG_SERVER | CFGFLAG_GAME, ConTuneSetZoneMsgLeave, this, "Which message to display on zone leave; use 0 for normal area");
 	Console()->Register("mapbug", "s[mapbug]", CFGFLAG_SERVER | CFGFLAG_GAME, ConMapbug, this, "Enable map compatibility mode using the specified bug (example: grenade-doubleexplosion@ddnet.tw)");
 	Console()->Register("switch_open", "i[switch]", CFGFLAG_SERVER | CFGFLAG_GAME, ConSwitchOpen, this, "Whether a switch is deactivated by default (otherwise activated)");
-	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'|'speedup'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
+	Console()->Register("ho_tile", "s['all'|'kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'|'speedup'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
 	Console()->Register("pause_game", "", CFGFLAG_SERVER, ConPause, this, "Pause/unpause game");
 	Console()->Register("change_map", "r[map]", CFGFLAG_SERVER | CFGFLAG_STORE, ConChangeMap, this, "Change map");
 	Console()->Register("random_map", "?i[stars] ?i[max stars]", CFGFLAG_SERVER | CFGFLAG_STORE, ConRandomMap, this, "Random map");
