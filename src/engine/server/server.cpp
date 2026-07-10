@@ -3159,6 +3159,7 @@ void CServer::UpdateStdinConsole()
 				m_aStdinConsoleInput[m_StdinConsoleInputLength] = '\0';
 				if(m_StdinConsoleInputLength > 0 && str_utf8_check(m_aStdinConsoleInput))
 				{
+					log_info("server", "ClientId=%d (server console) key='local_console' rcon='%s'", IConsole::CLIENT_ID_UNSPECIFIED, m_aStdinConsoleInput);
 					Console()->ExecuteLineFlag(m_aStdinConsoleInput, CFGFLAG_SERVER, IConsole::CLIENT_ID_UNSPECIFIED);
 				}
 				m_StdinConsoleInputLength = 0;
