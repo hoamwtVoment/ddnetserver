@@ -104,6 +104,7 @@ CGameContext::CGameContext(bool Resetting) :
 	m_aMapInfoMessage[0] = '\0';
 
 	m_pScore = nullptr;
+	std::fill(std::begin(m_aHoTileEnabled), std::end(m_aHoTileEnabled), true);
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -3324,6 +3325,67 @@ void CGameContext::ConSwitchOpen(IConsole::IResult *pResult, void *pUserData)
 	}
 }
 
+void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const char *pTile = pResult->GetString(0);
+	const char *pState = pResult->GetString(1);
+
+	EHoTile Tile;
+	const char *pTileName;
+	if(str_comp_nocase(pTile, "kill") == 0)
+	{
+		Tile = HO_TILE_KILL;
+		pTileName = "kill";
+	}
+	else if(str_comp_nocase(pTile, "border") == 0)
+	{
+		Tile = HO_TILE_BORDER;
+		pTileName = "border";
+	}
+	else if(str_comp_nocase(pTile, "freeze") == 0)
+	{
+		Tile = HO_TILE_FREEZE;
+		pTileName = "freeze";
+	}
+	else if(str_comp_nocase(pTile, "deepfreeze") == 0)
+	{
+		Tile = HO_TILE_DEEPFREEZE;
+		pTileName = "deepfreeze";
+	}
+	else if(str_comp_nocase(pTile, "livefreeze") == 0)
+	{
+		Tile = HO_TILE_LIVEFREEZE;
+		pTileName = "livefreeze";
+	}
+	else if(str_comp_nocase(pTile, "tele") == 0)
+	{
+		Tile = HO_TILE_TELE;
+		pTileName = "tele";
+	}
+	else
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele] [off|on]");
+		return;
+	}
+
+	bool Enabled;
+	if(str_comp_nocase(pState, "on") == 0)
+		Enabled = true;
+	else if(str_comp_nocase(pState, "off") == 0)
+		Enabled = false;
+	else
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele] [off|on]");
+		return;
+	}
+
+	pSelf->m_aHoTileEnabled[Tile] = Enabled;
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "ho_tile %s %s", pTileName, Enabled ? "on" : "off");
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+}
+
 void CGameContext::ConPause(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -3935,6 +3997,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("tune_zone_leave", "i[zone] r[message]", CFGFLAG_SERVER | CFGFLAG_GAME, ConTuneSetZoneMsgLeave, this, "Which message to display on zone leave; use 0 for normal area");
 	Console()->Register("mapbug", "s[mapbug]", CFGFLAG_SERVER | CFGFLAG_GAME, ConMapbug, this, "Enable map compatibility mode using the specified bug (example: grenade-doubleexplosion@ddnet.tw)");
 	Console()->Register("switch_open", "i[switch]", CFGFLAG_SERVER | CFGFLAG_GAME, ConSwitchOpen, this, "Whether a switch is deactivated by default (otherwise activated)");
+	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'] s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Disable/enable selected tile effects without changing the map");
 	Console()->Register("pause_game", "", CFGFLAG_SERVER, ConPause, this, "Pause/unpause game");
 	Console()->Register("change_map", "r[map]", CFGFLAG_SERVER | CFGFLAG_STORE, ConChangeMap, this, "Change map");
 	Console()->Register("random_map", "?i[stars] ?i[max stars]", CFGFLAG_SERVER | CFGFLAG_STORE, ConRandomMap, this, "Random map");

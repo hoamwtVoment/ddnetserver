@@ -135,6 +135,21 @@ class CGameContext : public IGameServer
 
 	bool m_Resetting;
 
+public:
+	enum EHoTile
+	{
+		HO_TILE_KILL = 0,
+		HO_TILE_BORDER,
+		HO_TILE_FREEZE,
+		HO_TILE_DEEPFREEZE,
+		HO_TILE_LIVEFREEZE,
+		HO_TILE_TELE,
+		NUM_HO_TILES
+	};
+
+private:
+	bool m_aHoTileEnabled[NUM_HO_TILES];
+
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
 	static void TeeHistorianWrite(const void *pData, int DataSize, void *pUser);
@@ -150,6 +165,7 @@ class CGameContext : public IGameServer
 	static void ConTuneSetZoneMsgLeave(IConsole::IResult *pResult, void *pUserData);
 	static void ConMapbug(IConsole::IResult *pResult, void *pUserData);
 	static void ConSwitchOpen(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoTile(IConsole::IResult *pResult, void *pUserData);
 	static void ConPause(IConsole::IResult *pResult, void *pUserData);
 	static void ConChangeMap(IConsole::IResult *pResult, void *pUserData);
 	static void ConRandomMap(IConsole::IResult *pResult, void *pUserData);
@@ -243,6 +259,7 @@ public:
 	std::optional<int> FindClientIdByName(const char *pName) const;
 	bool EmulateBug(int Bug) const;
 	std::vector<SSwitchers> &Switchers() { return m_World.m_Core.m_vSwitchers; }
+	bool HoTileEnabled(EHoTile Tile) const { return m_aHoTileEnabled[Tile]; }
 
 	// voting
 	void StartVote(const char *pDesc, const char *pCommand, const char *pReason, const char *pSixupDesc);
