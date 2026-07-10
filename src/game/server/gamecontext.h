@@ -156,6 +156,8 @@ private:
 	bool m_HoTickFrozen;
 	bool m_HoTickWasPaused;
 	int m_HoTickStepTicks;
+	float m_HoTickRate;
+	float m_HoTickRateAccumulator;
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);

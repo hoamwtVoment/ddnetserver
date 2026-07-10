@@ -111,6 +111,8 @@ CGameContext::CGameContext(bool Resetting) :
 	m_HoTickFrozen = false;
 	m_HoTickWasPaused = false;
 	m_HoTickStepTicks = 0;
+	m_HoTickRate = SERVER_TICK_SPEED;
+	m_HoTickRateAccumulator = 0.0f;
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1164,49 +1166,69 @@ void CGameContext::OnTick()
 		m_TeeHistorian.BeginPlayers();
 	}
 
-	bool HoTickRanStep = false;
+	int HoTickGameTicks = 1;
 	if(m_HoTickFrozen)
 	{
+		HoTickGameTicks = 0;
 		if(m_HoTickStepTicks > 0)
 		{
 			m_pController->SetGamePaused(false);
 			--m_HoTickStepTicks;
-			HoTickRanStep = true;
+			HoTickGameTicks = 1;
 		}
 		else
 		{
 			m_pController->SetGamePaused(true);
 		}
 	}
+	else if(m_HoTickRate < Server()->TickSpeed())
+	{
+		m_HoTickRateAccumulator += m_HoTickRate;
+		if(m_HoTickRateAccumulator >= Server()->TickSpeed())
+		{
+			m_HoTickRateAccumulator -= Server()->TickSpeed();
+			HoTickGameTicks = 1;
+		}
+		else
+		{
+			HoTickGameTicks = 0;
+		}
+	}
+	else
+	{
+		m_HoTickRateAccumulator = 0.0f;
+	}
 
-	// copy tuning
-	*m_World.GetTuning(0) = m_aTuningList[0];
-	m_World.Tick();
+	for(int Tick = 0; Tick < HoTickGameTicks; ++Tick)
+	{
+		// copy tuning
+		*m_World.GetTuning(0) = m_aTuningList[0];
+		m_World.Tick();
 
-	UpdatePlayerMaps();
+		UpdatePlayerMaps();
 
-	if(!m_HoTickFrozen || HoTickRanStep)
 		m_pController->Tick();
 
-	for(int i = 0; i < MAX_CLIENTS; i++)
-	{
-		if(m_apPlayers[i])
+		for(int i = 0; i < MAX_CLIENTS; i++)
 		{
-			// send vote options
-			ProgressVoteOptions(i);
+			if(m_apPlayers[i])
+			{
+				// send vote options
+				ProgressVoteOptions(i);
 
-			m_apPlayers[i]->Tick();
-			m_apPlayers[i]->PostTick();
+				m_apPlayers[i]->Tick();
+				m_apPlayers[i]->PostTick();
+			}
+		}
+
+		for(auto &pPlayer : m_apPlayers)
+		{
+			if(pPlayer)
+				pPlayer->PostPostTick();
 		}
 	}
 
-	for(auto &pPlayer : m_apPlayers)
-	{
-		if(pPlayer)
-			pPlayer->PostPostTick();
-	}
-
-	if(HoTickRanStep && m_HoTickFrozen)
+	if(m_HoTickFrozen)
 	{
 		m_pController->SetGamePaused(true);
 	}
@@ -3639,10 +3661,10 @@ void CGameContext::ConHoTick(IConsole::IResult *pResult, void *pUserData)
 
 	auto PrintStatus = [&]() {
 		char aBuf[160];
-		str_format(aBuf, sizeof(aBuf), "ho_tick: %s, queued step ticks: %d, game pause before freeze: %s",
+		str_format(aBuf, sizeof(aBuf), "ho_tick: %s, rate %.2f tps, queued step ticks: %d",
 			pSelf->m_HoTickFrozen ? "frozen" : "running",
-			pSelf->m_HoTickStepTicks,
-			pSelf->m_HoTickWasPaused ? "on" : "off");
+			pSelf->m_HoTickRate,
+			pSelf->m_HoTickStepTicks);
 		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", aBuf);
 	};
 
@@ -3681,39 +3703,47 @@ void CGameContext::ConHoTick(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
-	if(str_comp_nocase(pAction, "toggle") == 0)
+	if(str_comp_nocase(pAction, "rate") == 0)
 	{
-		if(pSelf->m_HoTickFrozen)
+		if(pResult->NumArguments() == 1)
 		{
-			pSelf->m_HoTickFrozen = false;
-			pSelf->m_HoTickStepTicks = 0;
-			pSelf->m_pController->SetGamePaused(pSelf->m_HoTickWasPaused);
-			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "ho_tick running");
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "ho_tick rate is %.2f tps", pSelf->m_HoTickRate);
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", aBuf);
+			return;
 		}
-		else
+
+		const float Rate = str_tofloat(pResult->GetString(1));
+		if(Rate <= 0.0f || Rate > pSelf->Server()->TickSpeed())
 		{
-			pSelf->m_HoTickWasPaused = pSelf->m_pController->IsGamePaused();
-			pSelf->m_HoTickFrozen = true;
-			pSelf->m_HoTickStepTicks = 0;
-			pSelf->m_pController->SetGamePaused(true);
-			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "ho_tick frozen");
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "usage: ho_tick rate [tps], 0 < tps <= %d", pSelf->Server()->TickSpeed());
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", aBuf);
+			return;
 		}
+
+		pSelf->m_HoTickRate = Rate;
+		pSelf->m_HoTickRateAccumulator = 0.0f;
+
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "ho_tick rate %.2f tps", pSelf->m_HoTickRate);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", aBuf);
 		return;
 	}
 
 	if(str_comp_nocase(pAction, "step") == 0)
 	{
-		const int StepTicks = pResult->NumArguments() >= 2 ? pResult->GetInteger(1) : 1;
+		const int StepTicks = pResult->NumArguments() >= 2 ? str_toint(pResult->GetString(1)) : 1;
 		if(StepTicks <= 0)
 		{
-			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "usage: ho_tick [status|freeze|unfreeze|toggle|step [ticks]|stop]");
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "usage: ho_tick step [ticks]");
 			return;
 		}
 
 		if(!pSelf->m_HoTickFrozen)
 		{
-			pSelf->m_HoTickWasPaused = pSelf->m_pController->IsGamePaused();
-			pSelf->m_HoTickFrozen = true;
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "ho_tick step only works while frozen; use ho_tick freeze first");
+			return;
 		}
 
 		const int MaxQueuedTicks = 1000000;
@@ -3729,16 +3759,7 @@ void CGameContext::ConHoTick(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
-	if(str_comp_nocase(pAction, "stop") == 0)
-	{
-		pSelf->m_HoTickStepTicks = 0;
-		if(pSelf->m_HoTickFrozen)
-			pSelf->m_pController->SetGamePaused(true);
-		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "ho_tick step queue stopped");
-		return;
-	}
-
-	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "usage: ho_tick [status|freeze|unfreeze|toggle|step [ticks]|stop]");
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "usage: ho_tick [status|freeze|unfreeze|rate [tps]|step [ticks]]");
 }
 
 void CGameContext::ConSay(IConsole::IResult *pResult, void *pUserData)
@@ -4392,7 +4413,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("mod_alert", "v[id] r[message]", CFGFLAG_SERVER, ConModAlert, this, "Send a moderator alert message to player");
 	Console()->Register("broadcast", "r[message]", CFGFLAG_SERVER, ConBroadcast, this, "Broadcast message");
 	Console()->Register("ho_tps", "?i[value]", CFGFLAG_SERVER, ConHoTps, this, "Show TPS in broadcast every value ticks, 0 disables");
-	Console()->Register("ho_tick", "?s[action] ?i[ticks]", CFGFLAG_SERVER, ConHoTick, this, "Minecraft-like tick control: status, freeze, unfreeze, toggle, step [ticks], stop");
+	Console()->Register("ho_tick", "?s[action] ?s[value]", CFGFLAG_SERVER, ConHoTick, this, "Minecraft-like tick control: status, freeze, unfreeze, rate [tps], step [ticks]");
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
