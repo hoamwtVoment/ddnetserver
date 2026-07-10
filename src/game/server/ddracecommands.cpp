@@ -727,6 +727,44 @@ void CGameContext::ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakedeath", aBuf);
 }
 
+void CGameContext::ConHoFlyMode(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_flymode", "this command must be executed by a player");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pPlayer->m_HoFlyMode)
+	{
+		pPlayer->m_HoFlyMode = false;
+		CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+		if(pChr)
+			pChr->ResetVelocity();
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_flymode", "ho_flymode off");
+		return;
+	}
+
+	float Speed = pResult->NumArguments() > 0 ? pResult->GetFloat(0) : pPlayer->m_HoFlySpeed;
+	if(Speed <= 0.0f)
+		Speed = 600.0f;
+
+	pPlayer->m_HoFlySpeed = Speed;
+	pPlayer->m_HoFlyMode = true;
+
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(pChr)
+		pChr->ResetVelocity();
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "ho_flymode on, speed %.2f px/s", pPlayer->m_HoFlySpeed);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_flymode", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

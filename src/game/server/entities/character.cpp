@@ -803,6 +803,8 @@ void CCharacter::PreTick()
 
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true, !g_Config.m_SvNoWeakHook);
+	if(m_pPlayer->m_HoFlyMode)
+		m_Core.m_Vel = vec2(0, 0);
 }
 
 void CCharacter::Tick()
@@ -863,7 +865,29 @@ void CCharacter::TickDeferred()
 	bool StuckBefore = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 
 	m_Core.m_Id = m_pPlayer->GetCid();
-	m_Core.Move();
+	if(m_pPlayer->m_HoFlyMode)
+	{
+		vec2 NewPos = m_Core.m_Pos;
+		vec2 FlyVel(0, 0);
+		const float Speed = m_pPlayer->m_HoFlySpeed / Server()->TickSpeed();
+
+		FlyVel.x = m_Input.m_Direction * Speed;
+		if(m_Input.m_Jump)
+			FlyVel.y -= Speed;
+		if(m_Input.m_Hook)
+			FlyVel.y += Speed;
+
+		if(length(FlyVel) > Speed)
+			FlyVel = normalize(FlyVel) * Speed;
+
+		Collision()->MoveBox(&NewPos, &FlyVel, CCharacterCore::PhysicalSizeVec2(), vec2(0, 0));
+		m_Core.m_Pos = NewPos;
+		m_Core.m_Vel = vec2(0, 0);
+	}
+	else
+	{
+		m_Core.Move();
+	}
 	bool StuckAfterMove = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 	m_Core.Quantize();
 	bool StuckAfterQuant = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());

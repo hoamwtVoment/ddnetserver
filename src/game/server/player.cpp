@@ -88,6 +88,8 @@ void CPlayer::Reset()
 	m_TuneZoneOld = m_TuneZone;
 	m_Halloween = false;
 	m_FirstPacket = true;
+	m_HoFlyMode = false;
+	m_HoFlySpeed = 600.0f;
 
 	m_SendVoteIndex = -1;
 

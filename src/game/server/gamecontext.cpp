@@ -4299,6 +4299,7 @@ void CGameContext::RegisterDDRaceCommands()
 	Console()->Register("ho_speedlimit", "?i['0'|'1']", CFGFLAG_SERVER, ConHoSpeedLimit, this, "Enable or disable the character velocity length limit and x velocity ramp");
 	Console()->Register("ho_racetime", "i[id] ?i[ticks]", CFGFLAG_SERVER, ConHoRaceTime, this, "Show or set a player's race time in ticks");
 	Console()->Register("ho_fakedeath", "i[id] ?i[killer] ?i[weapon]", CFGFLAG_SERVER, ConHoFakeDeath, this, "Send fake death without killing. weapon: game=-3 self=-2 world=-1 hammer=0 gun=1 shotgun=2 grenade=3 laser=4 ninja=5");
+	Console()->Register("ho_flymode", "?f[speed]", CFGFLAG_SERVER, ConHoFlyMode, this, "Toggle fly mode for yourself. speed is pixels per second; left/right move, jump moves up, hook moves down");
 	Console()->Register("addweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConAddWeapon, this, "Gives weapon with id i to you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("removeweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConRemoveWeapon, this, "removes weapon with id i from you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("shotgun", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConShotgun, this, "Gives a shotgun to you");

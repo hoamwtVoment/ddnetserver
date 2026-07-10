@@ -109,6 +109,8 @@ public:
 	int m_JoinTick;
 	int m_LastActionTick;
 	int m_TeamChangeTick;
+	bool m_HoFlyMode;
+	float m_HoFlySpeed;
 
 	// network latency calculations
 	struct
