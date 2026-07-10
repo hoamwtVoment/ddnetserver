@@ -3362,9 +3362,14 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 		Tile = HO_TILE_TELE;
 		pTileName = "tele";
 	}
+	else if(str_comp_nocase(pTile, "speedup") == 0)
+	{
+		Tile = HO_TILE_SPEEDUP;
+		pTileName = "speedup";
+	}
 	else
 	{
-		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele] [off|on]");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
 		return;
 	}
 
@@ -3384,7 +3389,7 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 		Enabled = false;
 	else
 	{
-		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele] [off|on]");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", "usage: ho_tile [kill|border|freeze|deepfreeze|livefreeze|tele|speedup] [off|on]");
 		return;
 	}
 
@@ -4005,7 +4010,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("tune_zone_leave", "i[zone] r[message]", CFGFLAG_SERVER | CFGFLAG_GAME, ConTuneSetZoneMsgLeave, this, "Which message to display on zone leave; use 0 for normal area");
 	Console()->Register("mapbug", "s[mapbug]", CFGFLAG_SERVER | CFGFLAG_GAME, ConMapbug, this, "Enable map compatibility mode using the specified bug (example: grenade-doubleexplosion@ddnet.tw)");
 	Console()->Register("switch_open", "i[switch]", CFGFLAG_SERVER | CFGFLAG_GAME, ConSwitchOpen, this, "Whether a switch is deactivated by default (otherwise activated)");
-	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
+	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'|'speedup'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
 	Console()->Register("pause_game", "", CFGFLAG_SERVER, ConPause, this, "Pause/unpause game");
 	Console()->Register("change_map", "r[map]", CFGFLAG_SERVER | CFGFLAG_STORE, ConChangeMap, this, "Change map");
 	Console()->Register("random_map", "?i[stars] ?i[max stars]", CFGFLAG_SERVER | CFGFLAG_STORE, ConRandomMap, this, "Random map");
