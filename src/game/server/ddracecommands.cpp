@@ -474,11 +474,11 @@ void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 
 	CCharacter *pChr = pSelf->GetPlayerChar(Tele);
 	CPlayer *pPlayer = pSelf->m_apPlayers[pResult->m_ClientId];
+	CCharacter *pTeleToChr = pSelf->GetPlayerChar(TeleTo);
 
-	if(pChr && pPlayer && pSelf->GetPlayerChar(TeleTo))
+	if(pChr && pPlayer && pTeleToChr)
 	{
-		// default to view pos when character is not available
-		vec2 Pos = pPlayer->m_ViewPos;
+		vec2 Pos = pTeleToChr->GetPos();
 		if(pResult->NumArguments() == 0 && !pPlayer->IsPaused() && pChr->IsAlive())
 		{
 			vec2 Target = vec2(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
@@ -527,7 +527,18 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
-	vec2 Pos = pResult->NumArguments() >= 2 ? vec2(pResult->GetInteger(0) * 32.0f, pResult->GetInteger(1) * 32.0f) : pPlayer->m_ViewPos;
+	vec2 Pos = pPlayer->m_ViewPos;
+	if(pResult->NumArguments() >= 2)
+	{
+		float TileX = 0.0f;
+		float TileY = 0.0f;
+		if(!str_tofloat(pResult->GetString(0), &TileX) || !str_tofloat(pResult->GetString(1), &TileY))
+		{
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "invalid tile coordinate");
+			return;
+		}
+		Pos = vec2(TileX * 32.0f, TileY * 32.0f);
+	}
 	if(pResult->NumArguments() == 0 && ClientId == pResult->m_ClientId && !pPlayer->IsPaused() && pChr->IsAlive())
 	{
 		vec2 Target = vec2(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
@@ -549,7 +560,7 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 	}
 
 	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "teleported client %d to tile %.0f %.0f%s", ClientId, Pos.x / 32.0f, Pos.y / 32.0f, ResetRace ? " and reset race" : "");
+	str_format(aBuf, sizeof(aBuf), "teleported client %d to tile %.2f %.2f%s", ClientId, Pos.x / 32.0f, Pos.y / 32.0f, ResetRace ? " and reset race" : "");
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", aBuf);
 }
 
