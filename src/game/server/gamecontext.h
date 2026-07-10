@@ -506,6 +506,7 @@ private:
 	static void ConTeleport(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoTp(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoSpeed(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoSpeedLimit(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);

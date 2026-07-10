@@ -523,7 +523,7 @@ void CCharacterCore::TickDeferred()
 	}
 
 	// clamp the velocity to something sane
-	if(length(m_Vel) > 6000)
+	if((!m_pWorld || m_pWorld->m_HoSpeedLimit) && length(m_Vel) > 6000)
 		m_Vel = normalize(m_Vel) * 6000;
 }
 

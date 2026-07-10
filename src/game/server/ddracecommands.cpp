@@ -601,6 +601,25 @@ void CGameContext::ConHoSpeed(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", aBuf);
 }
 
+void CGameContext::ConHoSpeedLimit(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+
+	if(pResult->NumArguments() == 0)
+	{
+		char aBuf[64];
+		str_format(aBuf, sizeof(aBuf), "ho_speedlimit is %d", pSelf->m_World.m_Core.m_HoSpeedLimit ? 1 : 0);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speedlimit", aBuf);
+		return;
+	}
+
+	pSelf->m_World.m_Core.m_HoSpeedLimit = pResult->GetInteger(0) != 0;
+
+	char aBuf[64];
+	str_format(aBuf, sizeof(aBuf), "ho_speedlimit %d", pSelf->m_World.m_Core.m_HoSpeedLimit ? 1 : 0);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speedlimit", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

@@ -156,6 +156,7 @@ public:
 			pCharacter = nullptr;
 		}
 		m_pPrng = nullptr;
+		m_HoSpeedLimit = true;
 	}
 
 	int RandomOr0(int BelowThis) // NOLINT(readability-make-member-function-const)
@@ -172,6 +173,7 @@ public:
 
 	class CCharacterCore *m_apCharacters[MAX_CLIENTS];
 	CPrng *m_pPrng;
+	bool m_HoSpeedLimit;
 
 	void InitSwitchers(int HighestSwitchNumber);
 	std::vector<SSwitchers> m_vSwitchers;
