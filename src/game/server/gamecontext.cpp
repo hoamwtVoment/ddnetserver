@@ -4296,7 +4296,7 @@ void CGameContext::RegisterDDRaceCommands()
 	Console()->Register("tele", "?i[id] ?i[id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConTeleport, this, "Teleports player i (or you) to player i (or you to where you look at)");
 	Console()->Register("ho_tp", "?i[x] ?i[y] ?i[id] ?i[reset]", CFGFLAG_SERVER, ConHoTp, this, "Teleports player id (or you) to tile x/y, or to your cursor/view position without x/y. reset=1 marks the race as cheated");
 	Console()->Register("ho_speed", "i[id] s['x'|'y'] ?f[value]", CFGFLAG_SERVER, ConHoSpeed, this, "Show or set a player's velocity component");
-	Console()->Register("ho_speedlimit", "?i['0'|'1']", CFGFLAG_SERVER, ConHoSpeedLimit, this, "Enable or disable the character velocity length limit");
+	Console()->Register("ho_speedlimit", "?i['0'|'1']", CFGFLAG_SERVER, ConHoSpeedLimit, this, "Enable or disable character speed limits, including x input cap and velramp");
 	Console()->Register("addweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConAddWeapon, this, "Gives weapon with id i to you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("removeweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConRemoveWeapon, this, "removes weapon with id i from you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("shotgun", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConShotgun, this, "Gives a shotgun to you");
