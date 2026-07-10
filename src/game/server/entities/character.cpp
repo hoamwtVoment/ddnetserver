@@ -25,7 +25,18 @@
 #include <game/server/teams.h>
 #include <game/team_state.h>
 
+#include <cmath>
+#include <limits>
+
 MACRO_ALLOC_POOL_ID_IMPL(CCharacter, MAX_CLIENTS)
+
+static float HoFlyCoordStep(float Coord)
+{
+	const float AbsCoord = std::fabs(Coord);
+	const float NextCoord = std::nextafter(AbsCoord, std::numeric_limits<float>::infinity());
+	const float Step = NextCoord - AbsCoord;
+	return Step > 1.0f ? Step : 1.0f;
+}
 
 // Character, "physical" player's part
 CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
@@ -867,20 +878,53 @@ void CCharacter::TickDeferred()
 	m_Core.m_Id = m_pPlayer->GetCid();
 	if(m_pPlayer->m_HoFlyMode)
 	{
-		vec2 NewPos = m_Core.m_Pos;
-		vec2 FlyVel(0, 0);
+		vec2 FlyInput(0, 0);
 		const float Speed = m_pPlayer->m_HoFlySpeed / Server()->TickSpeed();
 
-		FlyVel.x = m_Input.m_Direction * Speed;
+		FlyInput.x = m_Input.m_Direction;
 		if(m_Input.m_Jump)
-			FlyVel.y -= Speed;
+			FlyInput.y -= 1.0f;
 		if(m_Input.m_Hook)
-			FlyVel.y += Speed;
+			FlyInput.y += 1.0f;
 
-		if(length(FlyVel) > Speed)
-			FlyVel = normalize(FlyVel) * Speed;
+		if(length(FlyInput) > 1.0f)
+			FlyInput = normalize(FlyInput);
 
-		Collision()->MoveBox(&NewPos, &FlyVel, CCharacterCore::PhysicalSizeVec2(), vec2(0, 0));
+		if(FlyInput == vec2(0, 0))
+			m_pPlayer->m_HoFlyRemainder = vec2(0, 0);
+		else
+			m_pPlayer->m_HoFlyRemainder += FlyInput * Speed;
+
+		vec2 NewPos = m_Core.m_Pos;
+		vec2 Move = m_pPlayer->m_HoFlyRemainder;
+		const vec2 Size = CCharacterCore::PhysicalSizeVec2();
+
+		const auto MoveAxis = [&](float &PosAxis, float &AxisMove, float OtherAxis, bool IsX) {
+			while(AxisMove != 0.0f)
+			{
+				const float StepSize = HoFlyCoordStep(PosAxis);
+				if(PosAxis + AxisMove == PosAxis && absolute(AxisMove) < StepSize)
+					return;
+				float Step = std::clamp(AxisMove, -StepSize, StepSize);
+				if(PosAxis + Step == PosAxis)
+					Step = AxisMove > 0.0f ? StepSize : -StepSize;
+
+				vec2 TestPos = IsX ? vec2(PosAxis + Step, OtherAxis) : vec2(OtherAxis, PosAxis + Step);
+				if(Collision()->TestBox(TestPos, Size))
+				{
+					AxisMove = 0.0f;
+					return;
+				}
+
+				PosAxis += Step;
+				AxisMove -= Step;
+			}
+		};
+
+		MoveAxis(NewPos.x, Move.x, NewPos.y, true);
+		MoveAxis(NewPos.y, Move.y, NewPos.x, false);
+
+		m_pPlayer->m_HoFlyRemainder = Move;
 		m_Core.m_Pos = NewPos;
 		m_Core.m_Vel = vec2(0, 0);
 	}
@@ -889,7 +933,8 @@ void CCharacter::TickDeferred()
 		m_Core.Move();
 	}
 	bool StuckAfterMove = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
-	m_Core.Quantize();
+	if(!m_pPlayer->m_HoFlyMode)
+		m_Core.Quantize();
 	bool StuckAfterQuant = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 	m_Pos = m_Core.m_Pos;
 

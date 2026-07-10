@@ -90,6 +90,7 @@ void CPlayer::Reset()
 	m_FirstPacket = true;
 	m_HoFlyMode = false;
 	m_HoFlySpeed = 600.0f;
+	m_HoFlyRemainder = vec2(0, 0);
 
 	m_SendVoteIndex = -1;
 

@@ -742,6 +742,7 @@ void CGameContext::ConHoFlyMode(IConsole::IResult *pResult, void *pUserData)
 	if(pPlayer->m_HoFlyMode)
 	{
 		pPlayer->m_HoFlyMode = false;
+		pPlayer->m_HoFlyRemainder = vec2(0, 0);
 		CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
 		if(pChr)
 			pChr->ResetVelocity();
@@ -755,6 +756,7 @@ void CGameContext::ConHoFlyMode(IConsole::IResult *pResult, void *pUserData)
 
 	pPlayer->m_HoFlySpeed = Speed;
 	pPlayer->m_HoFlyMode = true;
+	pPlayer->m_HoFlyRemainder = vec2(0, 0);
 
 	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
 	if(pChr)

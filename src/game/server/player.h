@@ -111,6 +111,7 @@ public:
 	int m_TeamChangeTick;
 	bool m_HoFlyMode;
 	float m_HoFlySpeed;
+	vec2 m_HoFlyRemainder;
 
 	// network latency calculations
 	struct
