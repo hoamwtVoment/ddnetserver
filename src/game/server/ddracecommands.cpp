@@ -631,6 +631,65 @@ void CGameContext::ConHoSpeedLimit(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speedlimit", aBuf);
 }
 
+void CGameContext::ConHoRaceTime(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->GetInteger(0);
+
+	if(!CheckClientId(ClientId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", "invalid client id");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(!pPlayer || !pChr)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", "player has no active character");
+		return;
+	}
+
+	if(pResult->NumArguments() == 1)
+	{
+		if(pChr->m_DDRaceState != ERaceState::STARTED)
+		{
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", "player has not started");
+			return;
+		}
+
+		const int RaceTicks = pSelf->Server()->Tick() - pChr->m_StartTime;
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "client %d race time is %d ticks", ClientId, RaceTicks);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", aBuf);
+		return;
+	}
+
+	int RaceTicks = pResult->GetInteger(1);
+	if(RaceTicks < 0)
+		RaceTicks = 0;
+
+	CGameTeams &Teams = pSelf->m_pController->Teams();
+	const int Team = pChr->Team();
+	if(Team > TEAM_FLOCK && Team < TEAM_SUPER && Teams.GetTeamState(Team) < ETeamState::STARTED)
+		Teams.ChangeTeamState(Team, ETeamState::STARTED);
+	Teams.SetStarted(ClientId, true);
+	Teams.SetDDRaceState(pPlayer, ERaceState::STARTED);
+	Teams.SetStartTime(pPlayer, pSelf->Server()->Tick() - RaceTicks);
+
+	if(RaceTicks == 0)
+	{
+		pChr->m_LastTimeCp = -1;
+		pChr->m_LastTimeCpBroadcasted = -1;
+		for(float &CurrentTimeCp : pChr->m_aCurrentTimeCp)
+			CurrentTimeCp = 0.0f;
+	}
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "client %d race time set to %d ticks", ClientId, RaceTicks);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_racetime", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
