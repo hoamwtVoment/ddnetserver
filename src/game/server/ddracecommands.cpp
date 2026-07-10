@@ -553,6 +553,54 @@ void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", aBuf);
 }
 
+void CGameContext::ConHoSpeed(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->GetInteger(0);
+	const char *pAxis = pResult->GetString(1);
+
+	if(!CheckClientId(ClientId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", "invalid client id");
+		return;
+	}
+
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(!pChr)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", "player has no active character");
+		return;
+	}
+
+	const bool IsX = str_comp_nocase(pAxis, "x") == 0;
+	const bool IsY = str_comp_nocase(pAxis, "y") == 0;
+	if(!IsX && !IsY)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", "usage: ho_speed [id] [x|y] [value]");
+		return;
+	}
+
+	vec2 Vel = pChr->Core()->m_Vel;
+	if(pResult->NumArguments() == 2)
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "client %d speed %s = %.2f", ClientId, IsX ? "x" : "y", IsX ? Vel.x : Vel.y);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", aBuf);
+		return;
+	}
+
+	if(IsX)
+		Vel.x = pResult->GetFloat(2);
+	else
+		Vel.y = pResult->GetFloat(2);
+
+	pChr->SetVelocity(Vel);
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "client %d speed x=%.2f y=%.2f", ClientId, pChr->Core()->m_Vel.x, pChr->Core()->m_Vel.y);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_speed", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
