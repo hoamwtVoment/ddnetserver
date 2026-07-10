@@ -40,6 +40,7 @@ vec2 ClampVel(int MoveRestriction, vec2 Vel)
 CCollision::CCollision()
 {
 	m_pDoor = nullptr;
+	m_HoTileTeleEnabled = true;
 	Unload();
 }
 
@@ -378,13 +379,15 @@ int CCollision::IntersectLineTeleHook(vec2 Pos0, vec2 Pos1, vec2 *pOutCollision,
 		int iy = round_to_int(Pos.y);
 
 		int Index = GetPureMapIndex(Pos);
-		if(pTeleNr)
+		if(pTeleNr && m_HoTileTeleEnabled)
 		{
 			if(g_Config.m_SvOldTeleportHook)
 				*pTeleNr = IsTeleport(Index);
 			else
 				*pTeleNr = IsTeleportHook(Index);
 		}
+		else if(pTeleNr)
+			*pTeleNr = 0;
 		if(pTeleNr && *pTeleNr)
 		{
 			if(pOutCollision)

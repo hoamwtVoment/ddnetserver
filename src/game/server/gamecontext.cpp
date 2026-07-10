@@ -3359,6 +3359,7 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 		}
 
 		std::fill(std::begin(pSelf->m_aHoTileEnabled), std::end(pSelf->m_aHoTileEnabled), Enabled);
+		pSelf->Collision()->SetHoTileTeleEnabled(Enabled);
 		char aBuf[128];
 		str_format(aBuf, sizeof(aBuf), "ho_tile all %s", Enabled ? "on" : "off");
 		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
@@ -3429,6 +3430,8 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 	}
 
 	pSelf->m_aHoTileEnabled[Tile] = Enabled;
+	if(Tile == HO_TILE_TELE)
+		pSelf->Collision()->SetHoTileTeleEnabled(Enabled);
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "ho_tile %s %s", pTileName, Enabled ? "on" : "off");
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);

@@ -46,6 +46,7 @@ public:
 	int GetCollisionAt(float x, float y) const { return GetTile(round_to_int(x), round_to_int(y)); }
 	int GetWidth() const { return m_Width; }
 	int GetHeight() const { return m_Height; }
+	void SetHoTileTeleEnabled(bool Enabled) { m_HoTileTeleEnabled = Enabled; }
 	int IntersectLine(vec2 Pos0, vec2 Pos1, vec2 *pOutCollision, vec2 *pOutBeforeCollision) const;
 	int IntersectLineTeleWeapon(vec2 Pos0, vec2 Pos1, vec2 *pOutCollision, vec2 *pOutBeforeCollision, int *pTeleNr = nullptr) const;
 	int IntersectLineTeleHook(vec2 Pos0, vec2 Pos1, vec2 *pOutCollision, vec2 *pOutBeforeCollision, int *pTeleNr = nullptr) const;
@@ -150,6 +151,7 @@ private:
 
 	int m_Width;
 	int m_Height;
+	bool m_HoTileTeleEnabled;
 
 	CTile *m_pTiles;
 	CTeleTile *m_pTele;
