@@ -288,11 +288,10 @@ void CCharacterCore::Tick(bool UseInput, bool DoDeferredTick)
 	}
 
 	// add the speed modification according to players wanted direction
-	const bool HoSpeedLimit = !m_pWorld || m_pWorld->m_HoSpeedLimit;
 	if(m_Direction < 0)
-		m_Vel.x = HoSpeedLimit ? SaturatedAdd(-MaxSpeed, MaxSpeed, m_Vel.x, -Accel) : m_Vel.x - Accel;
+		m_Vel.x = SaturatedAdd(-MaxSpeed, MaxSpeed, m_Vel.x, -Accel);
 	if(m_Direction > 0)
-		m_Vel.x = HoSpeedLimit ? SaturatedAdd(-MaxSpeed, MaxSpeed, m_Vel.x, Accel) : m_Vel.x + Accel;
+		m_Vel.x = SaturatedAdd(-MaxSpeed, MaxSpeed, m_Vel.x, Accel);
 	if(m_Direction == 0)
 		m_Vel.x *= Friction;
 
