@@ -1,0 +1,349 @@
+name: hoamsewe Auto Release
+
+on:
+  workflow_run:
+    workflows:
+      - Build
+      - Check ASan & UBSan
+      - Check clang-tidy
+      - Check Rust
+      - Check style
+    types:
+      - completed
+    branches:
+      - my-work
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: auto-release-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  auto-release:
+    name: Create hoamsewe release after all checks passed
+    runs-on: ubuntu-latest
+
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'my-work'
+      )
+
+    steps:
+      - name: Resolve target commit
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CURRENT_SHA: ${{ github.sha }}
+          CURRENT_REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "sha=$WORKFLOW_SHA" >> "$GITHUB_OUTPUT"
+            echo "branch=$WORKFLOW_BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+            echo "branch=$CURRENT_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          submodules: recursive
+
+      - name: Wait until required workflows passed
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.target.outputs.sha }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          echo "Repository: $REPO"
+          echo "Branch: $BRANCH"
+          echo "Commit: $SHA"
+
+          REQUIRED_WORKFLOWS=(
+            "Build"
+            "Check ASan & UBSan"
+            "Check clang-tidy"
+            "Check Rust"
+            "Check style"
+          )
+
+          MAX_WAIT_SECONDS=5400
+          SLEEP_SECONDS=60
+          WAITED=0
+
+          while true; do
+            gh run list \
+              --repo "$REPO" \
+              --branch "$BRANCH" \
+              --commit "$SHA" \
+              --limit 100 \
+              --json databaseId,workflowName,status,conclusion,event,url \
+              > runs.json
+
+            echo "Runs for this commit:"
+            jq -r '.[] | [.databaseId, .workflowName, .status, (.conclusion // "null"), .url] | @tsv' runs.json
+
+            RELEASE_READY=1
+            WAITING=0
+            : > release_run_ids.txt
+
+            for WF in "${REQUIRED_WORKFLOWS[@]}"; do
+              RUN_JSON="$(jq -c --arg wf "$WF" '[.[] | select(.workflowName == $wf)] | sort_by(.databaseId) | reverse | .[0] // empty' runs.json)"
+
+              if [ -z "$RUN_JSON" ]; then
+                echo "Missing workflow run: $WF"
+                RELEASE_READY=0
+                WAITING=1
+                continue
+              fi
+
+              RUN_ID="$(echo "$RUN_JSON" | jq -r '.databaseId')"
+              STATUS="$(echo "$RUN_JSON" | jq -r '.status')"
+              CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // "null"')"
+              URL="$(echo "$RUN_JSON" | jq -r '.url')"
+
+              echo "$WF => id=$RUN_ID status=$STATUS conclusion=$CONCLUSION"
+              echo "$URL"
+
+              if [ "$STATUS" != "completed" ]; then
+                echo "Workflow is not completed yet: $WF"
+                RELEASE_READY=0
+                WAITING=1
+                continue
+              fi
+
+              case "$CONCLUSION" in
+                success|skipped|neutral)
+                  echo "$RUN_ID" >> release_run_ids.txt
+                  ;;
+                *)
+                  echo "Workflow did not pass: $WF conclusion=$CONCLUSION"
+                  echo "ready=false" >> "$GITHUB_OUTPUT"
+                  exit 1
+                  ;;
+              esac
+            done
+
+            if [ "$RELEASE_READY" = "1" ]; then
+              echo "All required workflows passed."
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [ "$WAITING" = "1" ] && [ "$WAITED" -lt "$MAX_WAIT_SECONDS" ]; then
+              echo "Some workflows are still running. Waiting ${SLEEP_SECONDS}s..."
+              sleep "$SLEEP_SECONDS"
+              WAITED=$((WAITED + SLEEP_SECONDS))
+              continue
+            fi
+
+            echo "Timed out waiting for workflows."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          done
+
+      - name: Download artifacts from passed workflows
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-assets/raw
+          mkdir -p release-assets/files
+
+          while read -r RUN_ID; do
+            [ -z "$RUN_ID" ] && continue
+
+            echo "Downloading artifacts from run $RUN_ID"
+            mkdir -p "release-assets/raw/$RUN_ID"
+
+            gh run download "$RUN_ID" \
+              --repo "$REPO" \
+              --dir "release-assets/raw/$RUN_ID" || true
+          done < release_run_ids.txt
+
+          echo "Downloaded artifacts:"
+          find release-assets/raw -mindepth 1 -maxdepth 4 -print || true
+
+      - name: Collect artifacts as release assets
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob dotglob
+
+          mkdir -p release-assets/files
+
+          DDNET_VERSION="$(
+            sed -nE 's/^[[:space:]]*#define[[:space:]]+GAME_RELEASE_VERSION_INTERNAL[[:space:]]+([^[:space:]]+).*/\1/p' src/game/version.h | head -n 1
+          )"
+          if [ -z "${DDNET_VERSION:-}" ]; then
+            DDNET_VERSION="unknown"
+          fi
+
+          for ARTIFACT_DIR in release-assets/raw/*/*; do
+            if [ ! -d "$ARTIFACT_DIR" ]; then
+              continue
+            fi
+
+            ARTIFACT_NAME="$(basename "$ARTIFACT_DIR")"
+
+            case "$ARTIFACT_NAME" in
+              ddnet-windows-latest-mingw)
+                echo "Skipping $ARTIFACT_NAME: MinGW package can contain incompatible runtime DLLs; using windows-latest package instead."
+                continue
+                ;;
+              ddnet-ubuntu-latest-fancy)
+                echo "Skipping $ARTIFACT_NAME: duplicate Linux x86_64 artifact; using ubuntu-22.04 package instead."
+                continue
+                ;;
+            esac
+
+            FILES=("$ARTIFACT_DIR"/*)
+            if [ "${#FILES[@]}" -eq 0 ]; then
+              echo "Skipping empty artifact directory: $ARTIFACT_DIR"
+              continue
+            fi
+
+            if [ "${#FILES[@]}" -eq 1 ] && [ -f "${FILES[0]}" ]; then
+              case "$ARTIFACT_NAME" in
+                ddnet-windows-latest)
+                  OUT_NAME="hoamsewe-$DDNET_VERSION-win64.zip"
+                  ;;
+                ddnet-android)
+                  OUT_NAME="hoamsewe-$DDNET_VERSION.apk"
+                  ;;
+                ddnet-ubuntu-22.04)
+                  OUT_NAME="hoamsewe-$DDNET_VERSION-linux_x86_64.tar.xz"
+                  ;;
+                ddnet-macOS-latest)
+                  OUT_NAME="hoamsewe-$DDNET_VERSION-macos.dmg"
+                  ;;
+                ddnet-emscripten)
+                  OUT_NAME="hoamsewe-$DDNET_VERSION-Emscripten.tar.xz"
+                  ;;
+                *)
+                  OUT_NAME="$(basename "${FILES[0]}")"
+                  ;;
+              esac
+
+              echo "Using existing asset: ${FILES[0]} -> release-assets/files/$OUT_NAME"
+              cp "${FILES[0]}" "release-assets/files/$OUT_NAME"
+            else
+              SAFE_NAME="$(echo "$ARTIFACT_NAME" | tr '/\:*?"<>| ' '_________')"
+              ZIP_PATH="release-assets/files/hoamsewe-$DDNET_VERSION-$SAFE_NAME.zip"
+
+              echo "Packing multi-file artifact $ARTIFACT_DIR -> $ZIP_PATH"
+              (
+                cd "$ARTIFACT_DIR"
+                zip -r "../../../files/hoamsewe-$DDNET_VERSION-$SAFE_NAME.zip" .
+              )
+            fi
+          done
+
+          # GitHub already adds Source code (zip) and Source code (tar.gz) automatically.
+          echo "Release assets:"
+          find release-assets/files -type f -print || true
+
+      - name: Add source archive asset
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          DDNET_VERSION="$(
+            sed -nE 's/^[[:space:]]*#define[[:space:]]+GAME_RELEASE_VERSION_INTERNAL[[:space:]]+([^[:space:]]+).*/\1/p' src/game/version.h | head -n 1
+          )"
+          if [ -z "${DDNET_VERSION:-}" ]; then
+            DDNET_VERSION="unknown"
+          fi
+
+          git archive --format=tar --prefix="hoamsewe-$DDNET_VERSION/" "$SHA" | xz -9 -c > "release-assets/files/hoamsewe-$DDNET_VERSION.tar.xz"
+
+          echo "Added source archive: release-assets/files/hoamsewe-$DDNET_VERSION.tar.xz"
+
+      - name: Create GitHub Release and upload assets
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.target.outputs.sha }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          DDNET_VERSION="$(
+            sed -nE 's/^[[:space:]]*#define[[:space:]]+GAME_RELEASE_VERSION_INTERNAL[[:space:]]+([^[:space:]]+).*/\1/p' src/game/version.h | head -n 1
+          )"
+
+          if [ -z "${DDNET_VERSION:-}" ]; then
+            DDNET_VERSION="unknown"
+          fi
+
+          TAG="hoamsewe-$DDNET_VERSION-${SHA:0:12}"
+          TITLE="hoamsewe+$DDNET_VERSION+$SHA"
+
+          NOTES_FILE="release-notes.md"
+
+          cat > "$NOTES_FILE" <<EOF
+          Automatic release for commit \`$SHA\`.
+
+          Branch: \`$BRANCH\`
+
+          hoamsewe version: \`$DDNET_VERSION\`
+
+          Title: \`$TITLE\`
+
+          This release was created automatically after these workflows passed:
+
+          - Build
+          - Check ASan & UBSan
+          - Check clang-tidy
+          - Check Rust
+          - Check style
+          EOF
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Uploading assets if any."
+
+            if compgen -G "release-assets/files/*" > /dev/null; then
+              gh release upload "$TAG" release-assets/files/* \
+                --repo "$REPO" \
+                --clobber
+            fi
+
+            exit 0
+          fi
+
+          if compgen -G "release-assets/files/*" > /dev/null; then
+            gh release create "$TAG" release-assets/files/* \
+              --repo "$REPO" \
+              --target "$SHA" \
+              --title "$TITLE" \
+              --notes-file "$NOTES_FILE" \
+              --latest
+          else
+            gh release create "$TAG" \
+              --repo "$REPO" \
+              --target "$SHA" \
+              --title "$TITLE" \
+              --notes-file "$NOTES_FILE" \
+              --latest
+          fi
