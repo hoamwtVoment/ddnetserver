@@ -99,7 +99,9 @@ public:
 
 	enum
 	{
-		MAX_RCONCMD_SEND = 16,
+		// Send the initial rcon command list in larger batches so clients don't
+		// stay on "Loading commands..." for several seconds after logging in.
+		MAX_RCONCMD_SEND = 128,
 	};
 
 	enum class EDnsblState
