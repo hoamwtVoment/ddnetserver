@@ -1199,6 +1199,12 @@ void CGameContext::OnTick()
 		m_HoTickRateAccumulator = 0.0f;
 	}
 
+	if(!m_HoTickFrozen && m_HoTickStepTicks > 0)
+	{
+		++HoTickGameTicks;
+		--m_HoTickStepTicks;
+	}
+
 	for(int Tick = 0; Tick < HoTickGameTicks; ++Tick)
 	{
 		// copy tuning
@@ -3740,21 +3746,14 @@ void CGameContext::ConHoTick(IConsole::IResult *pResult, void *pUserData)
 			return;
 		}
 
-		if(!pSelf->m_HoTickFrozen)
-		{
-			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", "ho_tick step only works while frozen; use ho_tick freeze first");
-			return;
-		}
-
 		const int MaxQueuedTicks = 1000000;
 		if(StepTicks > MaxQueuedTicks - pSelf->m_HoTickStepTicks)
 			pSelf->m_HoTickStepTicks = MaxQueuedTicks;
 		else
 			pSelf->m_HoTickStepTicks += StepTicks;
-		pSelf->m_pController->SetGamePaused(true);
 
 		char aBuf[128];
-		str_format(aBuf, sizeof(aBuf), "ho_tick queued %d step ticks", pSelf->m_HoTickStepTicks);
+		str_format(aBuf, sizeof(aBuf), "ho_tick queued %d forced step ticks", pSelf->m_HoTickStepTicks);
 		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tick", aBuf);
 		return;
 	}
