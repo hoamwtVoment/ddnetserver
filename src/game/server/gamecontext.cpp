@@ -3329,7 +3329,6 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
 	const char *pTile = pResult->GetString(0);
-	const char *pState = pResult->GetString(1);
 
 	EHoTile Tile;
 	const char *pTileName;
@@ -3369,7 +3368,16 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 		return;
 	}
 
+	if(pResult->NumArguments() == 1)
+	{
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "ho_tile %s is %s", pTileName, pSelf->m_aHoTileEnabled[Tile] ? "on" : "off");
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+		return;
+	}
+
 	bool Enabled;
+	const char *pState = pResult->GetString(1);
 	if(str_comp_nocase(pState, "on") == 0)
 		Enabled = true;
 	else if(str_comp_nocase(pState, "off") == 0)
@@ -3997,7 +4005,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("tune_zone_leave", "i[zone] r[message]", CFGFLAG_SERVER | CFGFLAG_GAME, ConTuneSetZoneMsgLeave, this, "Which message to display on zone leave; use 0 for normal area");
 	Console()->Register("mapbug", "s[mapbug]", CFGFLAG_SERVER | CFGFLAG_GAME, ConMapbug, this, "Enable map compatibility mode using the specified bug (example: grenade-doubleexplosion@ddnet.tw)");
 	Console()->Register("switch_open", "i[switch]", CFGFLAG_SERVER | CFGFLAG_GAME, ConSwitchOpen, this, "Whether a switch is deactivated by default (otherwise activated)");
-	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'] s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Disable/enable selected tile effects without changing the map");
+	Console()->Register("ho_tile", "s['kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
 	Console()->Register("pause_game", "", CFGFLAG_SERVER, ConPause, this, "Pause/unpause game");
 	Console()->Register("change_map", "r[map]", CFGFLAG_SERVER | CFGFLAG_STORE, ConChangeMap, this, "Change map");
 	Console()->Register("random_map", "?i[stars] ?i[max stars]", CFGFLAG_SERVER | CFGFLAG_STORE, ConRandomMap, this, "Random map");
