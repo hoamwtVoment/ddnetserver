@@ -107,7 +107,7 @@ CGameContext::CGameContext(bool Resetting) :
 	std::fill(std::begin(m_aHoTileEnabled), std::end(m_aHoTileEnabled), true);
 	m_HoTpsInterval = 0;
 	m_HoTpsLastTick = 0;
-	m_HoTpsLastTime = time_get();
+	mem_zero(&m_aHoTpsTickTimes, sizeof(m_aHoTpsTickTimes));
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1187,20 +1187,32 @@ void CGameContext::OnTick()
 			pPlayer->PostPostTick();
 	}
 
-	if(m_HoTpsInterval > 0 && Server()->Tick() - m_HoTpsLastTick >= m_HoTpsInterval)
+	if(m_HoTpsInterval > 0)
 	{
-		const int TickDelta = Server()->Tick() - m_HoTpsLastTick;
 		const int64_t Now = time_get();
-		const int64_t TimeDelta = Now - m_HoTpsLastTime;
-		if(TickDelta > 0 && TimeDelta > 0)
+		m_aHoTpsTickTimes[Server()->Tick() % std::size(m_aHoTpsTickTimes)] = Now;
+
+		if(Server()->Tick() - m_HoTpsLastTick >= m_HoTpsInterval)
 		{
-			const double Tps = (double)TickDelta * (double)time_freq() / (double)TimeDelta;
-			char aBuf[64];
-			str_format(aBuf, sizeof(aBuf), "TPS: %.2f", Tps);
-			SendBroadcast(aBuf, -1);
+			const int MaxWindowTicks = std::min<int>(Server()->TickSpeed(), std::size(m_aHoTpsTickTimes) - 1);
+			int WindowTicks = std::min(MaxWindowTicks, Server()->Tick());
+			while(WindowTicks > 0 && m_aHoTpsTickTimes[(Server()->Tick() - WindowTicks) % std::size(m_aHoTpsTickTimes)] == 0)
+				--WindowTicks;
+
+			if(WindowTicks > 0)
+			{
+				const int64_t PreviousTime = m_aHoTpsTickTimes[(Server()->Tick() - WindowTicks) % std::size(m_aHoTpsTickTimes)];
+				const int64_t TimeDelta = Now - PreviousTime;
+				if(TimeDelta > 0)
+				{
+					const double Tps = (double)WindowTicks * (double)time_freq() / (double)TimeDelta;
+					char aBuf[64];
+					str_format(aBuf, sizeof(aBuf), "TPS: %.2f", Tps);
+					SendBroadcast(aBuf, -1);
+				}
+			}
+			m_HoTpsLastTick = Server()->Tick();
 		}
-		m_HoTpsLastTick = Server()->Tick();
-		m_HoTpsLastTime = Now;
 	}
 
 	// update voting
@@ -3589,7 +3601,8 @@ void CGameContext::ConHoTps(IConsole::IResult *pResult, void *pUserData)
 
 	pSelf->m_HoTpsInterval = Interval;
 	pSelf->m_HoTpsLastTick = pSelf->Server()->Tick();
-	pSelf->m_HoTpsLastTime = time_get();
+	mem_zero(&pSelf->m_aHoTpsTickTimes, sizeof(pSelf->m_aHoTpsTickTimes));
+	pSelf->m_aHoTpsTickTimes[pSelf->Server()->Tick() % std::size(pSelf->m_aHoTpsTickTimes)] = time_get();
 
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "ho_tps on, refresh every %d ticks", Interval);

@@ -1,4 +1,4 @@
-/* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
+﻿/* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #ifndef GAME_SERVER_GAMECONTEXT_H
 #define GAME_SERVER_GAMECONTEXT_H
@@ -152,7 +152,7 @@ private:
 	bool m_aHoTileEnabled[NUM_HO_TILES];
 	int m_HoTpsInterval;
 	int m_HoTpsLastTick;
-	int64_t m_HoTpsLastTime;
+	int64_t m_aHoTpsTickTimes[256];
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
