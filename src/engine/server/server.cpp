@@ -4047,7 +4047,6 @@ void CServer::ConHoAuth(IConsole::IResult *pResult, void *pUser)
 	char aBuf[256];
 	str_format(aBuf, sizeof(aBuf), "ClientId=%d forced authed with key='%s' (%s)", ClientId, pIdent, pRoleName);
 	pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", aBuf);
-	log_info("server", "%s", aBuf);
 }
 
 void CServer::ConShutdown(IConsole::IResult *pResult, void *pUser)
