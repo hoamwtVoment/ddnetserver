@@ -153,6 +153,9 @@ private:
 	int m_HoTpsInterval;
 	int m_HoTpsLastTick;
 	int64_t m_aHoTpsTickTimes[256];
+	bool m_HoTickFrozen;
+	bool m_HoTickWasPaused;
+	int m_HoTickStepTicks;
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -179,6 +182,7 @@ private:
 	static void ConModAlert(IConsole::IResult *pResult, void *pUserData);
 	static void ConBroadcast(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoTps(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoTick(IConsole::IResult *pResult, void *pUserData);
 	static void ConSay(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeam(IConsole::IResult *pResult, void *pUserData);
