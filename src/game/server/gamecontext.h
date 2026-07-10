@@ -499,6 +499,7 @@ private:
 	static void ConToCheckTeleporter(IConsole::IResult *pResult, void *pUserData);
 	void Teleport(CCharacter *pChr, vec2 Pos);
 	static void ConTeleport(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoTp(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);

@@ -491,6 +491,50 @@ void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 	}
 }
 
+void CGameContext::ConHoTp(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	if(!CheckClientId(pResult->m_ClientId))
+		return;
+
+	const int ClientId = pResult->NumArguments() >= 3 ? pResult->GetInteger(2) : pResult->m_ClientId;
+	const bool ResetRace = pResult->NumArguments() >= 4 ? pResult->GetInteger(3) != 0 : false;
+	const int AuthLevel = pSelf->Server()->GetAuthedState(pResult->m_ClientId);
+
+	if(!CheckClientId(ClientId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "invalid client id");
+		return;
+	}
+
+	if(ClientId != pResult->m_ClientId && AuthLevel < g_Config.m_SvTeleOthersAuthLevel)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "you aren't allowed to tele others");
+		return;
+	}
+
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(!pChr)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", "player has no active character");
+		return;
+	}
+
+	const vec2 Pos(pResult->GetInteger(0), pResult->GetInteger(1));
+	pChr->SetPosition(Pos);
+	pChr->m_Pos = Pos;
+	pChr->m_PrevPos = Pos;
+	pChr->ResetJumps();
+	pChr->SetVelocity(vec2(0, 0));
+
+	if(ResetRace)
+		pChr->m_DDRaceState = ERaceState::CHEATED;
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "teleported client %d to %.0f %.0f%s", ClientId, Pos.x, Pos.y, ResetRace ? " and reset race" : "");
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_tp", aBuf);
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
