@@ -226,6 +226,9 @@ public:
 	CEcon m_Econ;
 	CFifo m_Fifo;
 	CServerBan m_ServerBan;
+	char m_aStdinConsoleInput[IConsole::CMDLINE_LENGTH];
+	int m_StdinConsoleInputLength;
+	bool m_StdinConsoleEnabled;
 
 	int64_t m_GameStartTime;
 
@@ -308,6 +311,7 @@ public:
 	int64_t TickStartTime(int Tick);
 
 	int Init();
+	void UpdateStdinConsole();
 
 	static bool StrHideIps(const char *pInput, char *pOutputWithIps, size_t OutputWithIpsSize, char *pOutputWithoutIps, size_t OutputWithoutIpsSize);
 	void SendLogLine(const CLogMessage *pMessage);

@@ -12,6 +12,11 @@
 #include <base/io.h>
 #include <base/logger.h>
 #include <base/secure.h>
+#include <base/str.h>
+
+#if defined(CONF_FAMILY_WINDOWS)
+#include <windows.h>
+#endif
 
 #include <engine/config.h>
 #include <engine/console.h>
@@ -48,6 +53,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -263,6 +269,9 @@ CServer::CServer()
 
 	m_RconClientId = IServer::RCON_CID_SERV;
 	m_RconAuthLevel = AUTHED_ADMIN;
+	m_aStdinConsoleInput[0] = '\0';
+	m_StdinConsoleInputLength = 0;
+	m_StdinConsoleEnabled = false;
 
 	m_ServerInfoFirstRequest = 0;
 	m_ServerInfoNumRequests = 0;
@@ -3111,6 +3120,85 @@ void CServer::UpdateDebugDummies(bool ForceDisconnect)
 	m_PreviousDebugDummies = ForceDisconnect ? 0 : g_Config.m_DbgDummies;
 }
 
+void CServer::UpdateStdinConsole()
+{
+#if defined(CONF_FAMILY_WINDOWS)
+	HANDLE Stdin = GetStdHandle(STD_INPUT_HANDLE);
+	if(Stdin == INVALID_HANDLE_VALUE || Stdin == nullptr)
+		return;
+
+	DWORD ConsoleMode;
+	if(!GetConsoleMode(Stdin, &ConsoleMode))
+		return;
+	m_StdinConsoleEnabled = true;
+
+	DWORD NumEvents = 0;
+	if(!GetNumberOfConsoleInputEvents(Stdin, &NumEvents) || NumEvents == 0)
+		return;
+
+	while(NumEvents > 0)
+	{
+		INPUT_RECORD Record;
+		DWORD NumRead = 0;
+		if(!ReadConsoleInputW(Stdin, &Record, 1, &NumRead) || NumRead == 0)
+			return;
+		--NumEvents;
+
+		if(Record.EventType != KEY_EVENT || !Record.Event.KeyEvent.bKeyDown)
+			continue;
+
+		const wchar_t WideChar = Record.Event.KeyEvent.uChar.UnicodeChar;
+		const WORD RepeatCount = std::max<WORD>(Record.Event.KeyEvent.wRepeatCount, 1);
+		for(WORD Repeat = 0; Repeat < RepeatCount; ++Repeat)
+		{
+			if(WideChar == L'\r' || WideChar == L'\n')
+			{
+				fputc('\n', stdout);
+				fflush(stdout);
+
+				m_aStdinConsoleInput[m_StdinConsoleInputLength] = '\0';
+				if(m_StdinConsoleInputLength > 0 && str_utf8_check(m_aStdinConsoleInput))
+				{
+					Console()->ExecuteLineFlag(m_aStdinConsoleInput, CFGFLAG_SERVER, IConsole::CLIENT_ID_UNSPECIFIED);
+				}
+				m_StdinConsoleInputLength = 0;
+				m_aStdinConsoleInput[0] = '\0';
+				continue;
+			}
+
+			if(WideChar == L'\b')
+			{
+				if(m_StdinConsoleInputLength > 0)
+				{
+					m_StdinConsoleInputLength = str_utf8_rewind(m_aStdinConsoleInput, m_StdinConsoleInputLength);
+					m_aStdinConsoleInput[m_StdinConsoleInputLength] = '\0';
+					fputs("\b \b", stdout);
+					fflush(stdout);
+				}
+				continue;
+			}
+
+			if(WideChar < L' ')
+				continue;
+
+			char aEncoded[8];
+			const int EncodedLength = str_utf8_encode(aEncoded, WideChar);
+			if(EncodedLength <= 0 || m_StdinConsoleInputLength + EncodedLength >= (int)sizeof(m_aStdinConsoleInput))
+				continue;
+
+			mem_copy(&m_aStdinConsoleInput[m_StdinConsoleInputLength], aEncoded, EncodedLength);
+			m_StdinConsoleInputLength += EncodedLength;
+			m_aStdinConsoleInput[m_StdinConsoleInputLength] = '\0';
+
+			DWORD NumWritten = 0;
+			WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &WideChar, 1, &NumWritten, nullptr);
+		}
+	}
+#else
+	(void)m_StdinConsoleEnabled;
+#endif
+}
+
 int CServer::Run()
 {
 	if(m_RunServer == UNINITIALIZED)
@@ -3246,6 +3334,7 @@ int CServer::Run()
 				PumpNetwork(PacketWaiting);
 
 			set_new_tick();
+			UpdateStdinConsole();
 
 			int64_t LastTime = time_get();
 			int NewTicks = 0;
@@ -3500,7 +3589,7 @@ int CServer::Run()
 				!m_aDemoRecorder[RECORDER_MANUAL].IsRecording() &&
 				!m_aDemoRecorder[RECORDER_AUTO].IsRecording())
 			{
-				PacketWaiting = net_socket_read_wait(m_NetServer.Socket(), 1s);
+				PacketWaiting = net_socket_read_wait(m_NetServer.Socket(), m_StdinConsoleEnabled ? 10ms : 1s);
 			}
 			else
 			{
