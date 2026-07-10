@@ -456,6 +456,7 @@ public:
 	static void ConAuthUpdateHashed(IConsole::IResult *pResult, void *pUser);
 	static void ConAuthRemove(IConsole::IResult *pResult, void *pUser);
 	static void ConAuthList(IConsole::IResult *pResult, void *pUser);
+	static void ConHoAuth(IConsole::IResult *pResult, void *pUser);
 
 	// console commands for sqlmasters
 	static void ConAddSqlServer(IConsole::IResult *pResult, void *pUserData);

@@ -3967,6 +3967,89 @@ void CServer::ConAuthList(IConsole::IResult *pResult, void *pUser)
 	pManager->ListKeys(ListKeysCallback, pThis);
 }
 
+void CServer::ConHoAuth(IConsole::IResult *pResult, void *pUser)
+{
+	CServer *pThis = (CServer *)pUser;
+	const int ClientId = pResult->GetInteger(0);
+	const char *pLevel = pResult->GetString(1);
+
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || pThis->m_aClients[ClientId].m_State == CServer::CClient::STATE_EMPTY)
+	{
+		pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", "invalid client id");
+		return;
+	}
+
+	if(!str_comp_nocase(pLevel, "off") || !str_comp_nocase(pLevel, "logout") || !str_comp_nocase(pLevel, "none"))
+	{
+		if(pThis->IsRconAuthed(ClientId))
+		{
+			pThis->LogoutClient(ClientId, "ho_auth");
+		}
+		pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", "client logged out");
+		return;
+	}
+
+	const int AuthLevel = GetAuthLevel(pLevel);
+	if(AuthLevel == -1)
+	{
+		pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", "level can be one of {\"admin\", \"mod(erator)\", \"helper\", \"off\"}");
+		return;
+	}
+
+	const char *pRoleName = CAuthManager::AuthLevelToRoleName(AuthLevel);
+	int KeySlot = pThis->m_AuthManager.DefaultKey(pRoleName);
+	if(KeySlot < 0)
+	{
+		char aPassword[32];
+		secure_random_password(aPassword, sizeof(aPassword), 16);
+		pThis->m_AuthManager.AddDefaultKey(pRoleName, aPassword);
+		KeySlot = pThis->m_AuthManager.DefaultKey(pRoleName);
+	}
+
+	if(KeySlot < 0)
+	{
+		pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", "failed to create auth key");
+		return;
+	}
+
+	if(pThis->IsRconAuthed(ClientId))
+	{
+		pThis->LogoutClient(ClientId, "ho_auth");
+	}
+
+	if(!pThis->IsSixup(ClientId))
+	{
+		CMsgPacker Msg(NETMSG_RCON_AUTH_STATUS, true);
+		Msg.AddInt(1); // authed
+		Msg.AddInt(1); // cmdlist
+		pThis->SendMsg(&Msg, MSGFLAG_VITAL, ClientId);
+	}
+	else
+	{
+		CMsgPacker Msg(protocol7::NETMSG_RCON_AUTH_ON, true, true);
+		pThis->SendMsg(&Msg, MSGFLAG_VITAL, ClientId);
+	}
+
+	pThis->m_aClients[ClientId].m_AuthKey = KeySlot;
+	pThis->m_aClients[ClientId].m_pRconCmdToSend = pThis->Console()->FirstCommandInfo(ClientId, CFGFLAG_SERVER);
+	pThis->SendRconCmdGroupStart(ClientId);
+	if(pThis->m_aClients[ClientId].m_pRconCmdToSend == nullptr)
+	{
+		pThis->SendRconCmdGroupEnd(ClientId);
+	}
+
+	const char *pIdent = pThis->m_AuthManager.KeyIdent(KeySlot);
+	char aLine[128];
+	str_format(aLine, sizeof(aLine), "%s authentication forced by server. Remote console access granted.", pRoleName);
+	pThis->SendRconLine(ClientId, aLine);
+	pThis->GameServer()->OnSetAuthed(ClientId, AuthLevel);
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "ClientId=%d forced authed with key='%s' (%s)", ClientId, pIdent, pRoleName);
+	pThis->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_auth", aBuf);
+	log_info("server", "%s", aBuf);
+}
+
 void CServer::ConShutdown(IConsole::IResult *pResult, void *pUser)
 {
 	CServer *pThis = static_cast<CServer *>(pUser);
@@ -4564,6 +4647,7 @@ void CServer::RegisterCommands()
 	Console()->Register("auth_change_p", "s[ident] s[level] s[hash] s[salt]", CFGFLAG_SERVER | CFGFLAG_NONTEEHISTORIC, ConAuthUpdateHashed, this, "Update a rcon key with prehashed data");
 	Console()->Register("auth_remove", "s[ident]", CFGFLAG_SERVER | CFGFLAG_NONTEEHISTORIC, ConAuthRemove, this, "Remove a rcon key");
 	Console()->Register("auth_list", "", CFGFLAG_SERVER, ConAuthList, this, "List all rcon keys");
+	Console()->Register("ho_auth", "i[id] s[level]", CFGFLAG_SERVER | CFGFLAG_NONTEEHISTORIC, ConHoAuth, this, "Force a client into rcon auth state. level: admin, moderator, helper, off");
 
 	Console()->Register("reload_announcement", "", CFGFLAG_SERVER, ConReloadAnnouncement, this, "Reload the announcements");
 	Console()->Register("reload_maplist", "", CFGFLAG_SERVER, ConReloadMaplist, this, "Reload the maplist");
