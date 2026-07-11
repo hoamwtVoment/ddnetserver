@@ -5463,6 +5463,12 @@ void CGameContext::OnSnap(int ClientId, bool GlobalSnap, bool RecordingDemo)
 	// sixup should only snap during global snap
 	dbg_assert(!Server()->IsSixup(ClientId) || GlobalSnap, "sixup should only snap during global snap");
 
+	if(ClientId >= 0 && m_apPlayers[ClientId] && CheckClientId(m_aHoControlTarget[ClientId]))
+	{
+		if(CCharacter *pTargetChar = GetPlayerChar(m_aHoControlTarget[ClientId]))
+			m_apPlayers[ClientId]->m_ViewPos = pTargetChar->m_Pos;
+	}
+
 	// add tuning to demo
 	if(RecordingDemo && mem_comp(&CTuningParams::DEFAULT, &m_aTuningList[0], sizeof(CTuningParams)) != 0)
 	{
