@@ -1156,7 +1156,7 @@ void CGameContext::UpdateHoFakePlayers()
 	for(int ClientId = 0; ClientId < MAX_CLIENTS; ++ClientId)
 	{
 		CPlayer *pPlayer = m_apPlayers[ClientId];
-		if(!m_aHoFakePlayer[ClientId] || !pPlayer || !Server()->IsFakeClient(ClientId))
+		if(!m_aHoFakePlayer[ClientId] || !pPlayer || !Server()->IsFakeClient(ClientId) || m_aHoControlledBy[ClientId] != -1)
 			continue;
 
 		CNetObj_PlayerInput Input = m_aHoFakePlayerInput[ClientId];
