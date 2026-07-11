@@ -837,6 +837,7 @@ bool CServer::CreateFakeClient(int ClientId, bool ShowInList, const char *pName,
 	Client.m_RedirectDropTime = 0;
 	Client.m_HasPersistentData = false;
 	Client.Reset();
+	m_NetServer.SetSlotReserved(ClientId, true);
 
 	Client.m_DebugDummyAddr.type = NETTYPE_IPV6;
 	Client.m_DebugDummyAddr.ip[0] = 0xfd;
@@ -1280,6 +1281,7 @@ int CServer::NewClientNoAuthCallback(int ClientId, void *pUser)
 	pThis->m_aClients[ClientId].m_DDNetVersion = VERSION_NONE;
 	pThis->m_aClients[ClientId].m_GotDDNetVersionPacket = false;
 	pThis->m_aClients[ClientId].m_DDNetVersionSettled = false;
+	pThis->m_NetServer.SetSlotReserved(ClientId, false);
 	pThis->m_aClients[ClientId].Reset();
 
 	pThis->GameServer()->TeehistorianRecordPlayerJoin(ClientId, false);
@@ -1316,6 +1318,7 @@ int CServer::NewClientCallback(int ClientId, void *pUser, bool Sixup)
 	pThis->m_aClients[ClientId].m_DDNetVersion = VERSION_NONE;
 	pThis->m_aClients[ClientId].m_GotDDNetVersionPacket = false;
 	pThis->m_aClients[ClientId].m_DDNetVersionSettled = false;
+	pThis->m_NetServer.SetSlotReserved(ClientId, false);
 	pThis->m_aClients[ClientId].Reset();
 	pThis->m_aClients[ClientId].m_Sixup = Sixup;
 
@@ -1401,6 +1404,7 @@ int CServer::DelClientCallback(int ClientId, const char *pReason, void *pUser)
 	pThis->m_aClients[ClientId].m_TrafficSince = 0;
 	pThis->m_aClients[ClientId].m_ShowIps = false;
 	pThis->m_aClients[ClientId].m_DebugDummy = false;
+	pThis->m_NetServer.SetSlotReserved(ClientId, false);
 	pThis->m_aClients[ClientId].m_HoFakePlayer = false;
 	pThis->m_aClients[ClientId].m_HoFakePlayerShowInList = false;
 	pThis->m_aClients[ClientId].m_ForceHighBandwidthOnSpectate = false;

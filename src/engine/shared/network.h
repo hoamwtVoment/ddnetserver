@@ -417,6 +417,7 @@ class CNetServer
 	{
 	public:
 		CNetConnection m_Connection;
+		bool m_Reserved = false;
 	};
 
 	struct CSpamConn
@@ -496,6 +497,7 @@ public:
 	bool HasErrored(int ClientId);
 	void ResumeOldConnection(int ClientId, int OrigId);
 	void IgnoreTimeouts(int ClientId);
+	void SetSlotReserved(int ClientId, bool Reserved);
 
 	void ResetErrorString(int ClientId);
 	const char *ErrorString(int ClientId);

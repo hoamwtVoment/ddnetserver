@@ -107,6 +107,12 @@ void CNetServer::Drop(int ClientId, const char *pReason)
 	m_aSlots[ClientId].m_Connection.Disconnect(pReason);
 }
 
+void CNetServer::SetSlotReserved(int ClientId, bool Reserved)
+{
+	dbg_assert(ClientId >= 0 && ClientId < NET_MAX_CLIENTS, "Invalid ClientId: %d", ClientId);
+	m_aSlots[ClientId].m_Reserved = Reserved;
+}
+
 void CNetServer::Update()
 {
 	for(int i = 0; i < MaxClients(); i++)
@@ -232,7 +238,7 @@ int CNetServer::TryAcceptClient(NETADDR &Addr, SECURITY_TOKEN SecurityToken, boo
 	int Slot = -1;
 	for(int i = 0; i < MaxClients(); i++)
 	{
-		if(m_aSlots[i].m_Connection.State() == CNetConnection::EState::OFFLINE)
+		if(!m_aSlots[i].m_Reserved && m_aSlots[i].m_Connection.State() == CNetConnection::EState::OFFLINE)
 		{
 			Slot = i;
 			break;
