@@ -1220,6 +1220,8 @@ bool CGameContext::StartHoControl(int ControllerId, int TargetId)
 
 	m_aHoControlTarget[ControllerId] = TargetId;
 	m_aHoControlledBy[TargetId] = ControllerId;
+	m_apPlayers[ControllerId]->Pause(CPlayer::PAUSE_PAUSED, true);
+	m_apPlayers[ControllerId]->SetSpectatorId(TargetId);
 
 	CNetObj_PlayerInput NeutralInput = {};
 	NeutralInput.m_TargetY = -1;
@@ -1253,6 +1255,11 @@ void CGameContext::StopHoControl(int ControllerId, bool Chat)
 	m_aHoControlTarget[ControllerId] = -1;
 	if(m_aHoControlledBy[TargetId] == ControllerId)
 		m_aHoControlledBy[TargetId] = -1;
+	if(m_apPlayers[ControllerId])
+	{
+		m_apPlayers[ControllerId]->SetSpectatorId(SPEC_FREEVIEW);
+		m_apPlayers[ControllerId]->Pause(CPlayer::PAUSE_NONE, true);
+	}
 
 	if(Chat)
 	{
@@ -1714,6 +1721,14 @@ void CGameContext::OnClientDirectInput(int ClientId, const void *pInput)
 	if(!m_apPlayers[ApplyClientId])
 		return;
 
+	CNetObj_PlayerInput ControlInput;
+	if(ApplyClientId != ClientId)
+	{
+		ControlInput = *pPlayerInput;
+		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		pPlayerInput = &ControlInput;
+	}
+
 	if(!m_pController->IsGamePaused())
 		m_apPlayers[ApplyClientId]->OnDirectInput(pPlayerInput);
 }
@@ -1739,6 +1754,14 @@ void CGameContext::OnClientPredictedInput(int ClientId, const void *pInput)
 	const int ApplyClientId = CheckClientId(m_aHoControlTarget[ClientId]) ? m_aHoControlTarget[ClientId] : ClientId;
 	if(!m_apPlayers[ApplyClientId])
 		return;
+
+	CNetObj_PlayerInput ControlInput;
+	if(ApplyClientId != ClientId)
+	{
+		ControlInput = *pApplyInput;
+		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		pApplyInput = &ControlInput;
+	}
 
 	if(!m_pController->IsGamePaused())
 		m_apPlayers[ApplyClientId]->OnPredictedInput(pApplyInput);
@@ -1774,6 +1797,14 @@ void CGameContext::OnClientPredictedEarlyInput(int ClientId, const void *pInput)
 	const int ApplyClientId = CheckClientId(m_aHoControlTarget[ClientId]) ? m_aHoControlTarget[ClientId] : ClientId;
 	if(!m_apPlayers[ApplyClientId])
 		return;
+
+	CNetObj_PlayerInput ControlInput;
+	if(ApplyClientId != ClientId)
+	{
+		ControlInput = *pApplyInput;
+		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		pApplyInput = &ControlInput;
+	}
 
 	if(ApplyClientId != ClientId)
 	{
