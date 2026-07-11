@@ -484,14 +484,22 @@ void CGameContext::ConTeleport(IConsole::IResult *pResult, void *pUserData)
 	CPlayer *pPlayer = FromServerConsole ? nullptr : pSelf->m_apPlayers[pResult->m_ClientId];
 	CCharacter *pTeleToChr = pSelf->GetPlayerChar(TeleTo);
 
-	if(pChr && pTeleToChr)
+	if(pChr && pPlayer && pResult->NumArguments() == 0)
 	{
-		vec2 Pos = pTeleToChr->GetPos();
-		if(pResult->NumArguments() == 0 && pPlayer && !pPlayer->IsPaused() && pChr->IsAlive())
+		vec2 Pos = pPlayer->m_ViewPos;
+		if(!pPlayer->IsPaused() && pChr->IsAlive())
 		{
 			vec2 Target = vec2(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
 			Pos = pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
 		}
+		pSelf->Teleport(pChr, Pos);
+		pChr->ResetJumps();
+		pChr->Unfreeze();
+		pChr->SetVelocity(vec2(0, 0));
+	}
+	else if(pChr && pTeleToChr)
+	{
+		vec2 Pos = pTeleToChr->GetPos();
 		pSelf->Teleport(pChr, Pos);
 		pChr->ResetJumps();
 		pChr->Unfreeze();
