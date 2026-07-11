@@ -1314,17 +1314,25 @@ bool CCharacter::IsSnappingCharacterInView(int SnappingClientId)
 void CCharacter::Snap(int SnappingClient)
 {
 	int Id = m_pPlayer->GetCid();
+	const int HoControlTarget = GameServer()->HoControlTarget(SnappingClient);
+	const bool HoControlLocalTarget = HoControlTarget == Id;
+	if(GameServer()->HoControlledBy(SnappingClient) != -1)
+		return;
+	if(HoControlTarget != -1 && Id == SnappingClient)
+		return;
+	if(HoControlLocalTarget)
+		Id = SnappingClient;
 
 	if(!Server()->Translate(Id, SnappingClient))
 		return;
 
-	if(!CanSnapCharacter(SnappingClient))
+	if(!HoControlLocalTarget && !CanSnapCharacter(SnappingClient))
 	{
 		return;
 	}
 
 	// always snap the snapping client, even if it is not in view
-	if(!IsSnappingCharacterInView(SnappingClient) && Id != SnappingClient)
+	if(!HoControlLocalTarget && !IsSnappingCharacterInView(SnappingClient) && Id != SnappingClient)
 		return;
 
 	SnapCharacter(SnappingClient, Id);

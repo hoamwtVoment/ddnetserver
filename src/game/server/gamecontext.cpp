@@ -1220,8 +1220,6 @@ bool CGameContext::StartHoControl(int ControllerId, int TargetId)
 
 	m_aHoControlTarget[ControllerId] = TargetId;
 	m_aHoControlledBy[TargetId] = ControllerId;
-	m_apPlayers[ControllerId]->Pause(CPlayer::PAUSE_PAUSED, true);
-	m_apPlayers[ControllerId]->SetSpectatorId(TargetId);
 
 	CNetObj_PlayerInput NeutralInput = {};
 	NeutralInput.m_TargetY = -1;
@@ -1255,11 +1253,6 @@ void CGameContext::StopHoControl(int ControllerId, bool Chat)
 	m_aHoControlTarget[ControllerId] = -1;
 	if(m_aHoControlledBy[TargetId] == ControllerId)
 		m_aHoControlledBy[TargetId] = -1;
-	if(m_apPlayers[ControllerId])
-	{
-		m_apPlayers[ControllerId]->SetSpectatorId(SPEC_FREEVIEW);
-		m_apPlayers[ControllerId]->Pause(CPlayer::PAUSE_NONE, true);
-	}
 
 	if(Chat)
 	{

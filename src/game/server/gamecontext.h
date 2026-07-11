@@ -280,6 +280,7 @@ public:
 	std::vector<SSwitchers> &Switchers() { return m_World.m_Core.m_vSwitchers; }
 	bool HoTileEnabled(EHoTile Tile) const { return m_aHoTileEnabled[Tile]; }
 	int HoControlTarget(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS ? m_aHoControlTarget[ClientId] : -1; }
+	int HoControlledBy(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS ? m_aHoControlledBy[ClientId] : -1; }
 
 	// voting
 	void StartVote(const char *pDesc, const char *pCommand, const char *pReason, const char *pSixupDesc);

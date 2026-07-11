@@ -363,33 +363,23 @@ void CPlayer::Snap(int SnappingClient)
 		Server()->SnapNewItem(TranslatedId, PlayerInfo);
 	}
 
-	const int HoControlTarget = m_ClientId == SnappingClient ? GameServer()->HoControlTarget(m_ClientId) : -1;
-	if(m_ClientId == SnappingClient && (m_Team == TEAM_SPECTATORS || m_Paused || HoControlTarget != -1))
+	if(m_ClientId == SnappingClient && (m_Team == TEAM_SPECTATORS || m_Paused))
 	{
-		int SpectatorId = m_SpectatorId;
-		vec2 ViewPos = m_ViewPos;
-		if(HoControlTarget != -1 && GameServer()->m_apPlayers[HoControlTarget])
-		{
-			SpectatorId = HoControlTarget;
-			if(CCharacter *pTargetChar = GameServer()->m_apPlayers[HoControlTarget]->GetCharacter())
-				ViewPos = pTargetChar->m_Pos;
-		}
-
 		if(!Server()->IsSixup(SnappingClient))
 		{
 			CNetObj_SpectatorInfo SpectatorInfo = {};
-			SpectatorInfo.m_SpectatorId = SpectatorId;
-			SpectatorInfo.m_X = ViewPos.x;
-			SpectatorInfo.m_Y = ViewPos.y;
+			SpectatorInfo.m_SpectatorId = m_SpectatorId;
+			SpectatorInfo.m_X = m_ViewPos.x;
+			SpectatorInfo.m_Y = m_ViewPos.y;
 			Server()->SnapNewItem(m_ClientId, SpectatorInfo);
 		}
 		else
 		{
 			protocol7::CNetObj_SpectatorInfo SpectatorInfo = {};
-			SpectatorInfo.m_SpecMode = SpectatorId == SPEC_FREEVIEW ? protocol7::SPEC_FREEVIEW : protocol7::SPEC_PLAYER;
-			SpectatorInfo.m_SpectatorId = SpectatorId;
-			SpectatorInfo.m_X = ViewPos.x;
-			SpectatorInfo.m_Y = ViewPos.y;
+			SpectatorInfo.m_SpecMode = m_SpectatorId == SPEC_FREEVIEW ? protocol7::SPEC_FREEVIEW : protocol7::SPEC_PLAYER;
+			SpectatorInfo.m_SpectatorId = m_SpectatorId;
+			SpectatorInfo.m_X = m_ViewPos.x;
+			SpectatorInfo.m_Y = m_ViewPos.y;
 			Server()->SnapNewItem(m_ClientId, SpectatorInfo);
 		}
 	}
