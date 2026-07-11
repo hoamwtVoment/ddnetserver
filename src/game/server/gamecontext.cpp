@@ -118,6 +118,9 @@ CGameContext::CGameContext(bool Resetting) :
 	mem_zero(&m_aHoFakePlayerInput, sizeof(m_aHoFakePlayerInput));
 	std::fill(std::begin(m_aHoControlTarget), std::end(m_aHoControlTarget), -1);
 	std::fill(std::begin(m_aHoControlledBy), std::end(m_aHoControlledBy), -1);
+	std::fill(std::begin(m_aHoControlInputInitialized), std::end(m_aHoControlInputInitialized), false);
+	mem_zero(&m_aHoControlLastRawInput, sizeof(m_aHoControlLastRawInput));
+	mem_zero(&m_aHoControlLastAppliedInput, sizeof(m_aHoControlLastAppliedInput));
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1220,6 +1223,7 @@ bool CGameContext::StartHoControl(int ControllerId, int TargetId)
 
 	m_aHoControlTarget[ControllerId] = TargetId;
 	m_aHoControlledBy[TargetId] = ControllerId;
+	m_aHoControlInputInitialized[ControllerId] = false;
 
 	CNetObj_PlayerInput NeutralInput = {};
 	NeutralInput.m_TargetY = -1;
@@ -1253,12 +1257,49 @@ void CGameContext::StopHoControl(int ControllerId, bool Chat)
 	m_aHoControlTarget[ControllerId] = -1;
 	if(m_aHoControlledBy[TargetId] == ControllerId)
 		m_aHoControlledBy[TargetId] = -1;
+	m_aHoControlInputInitialized[ControllerId] = false;
 
 	if(Chat)
 	{
 		SendChatTarget(ControllerId, "Control mode exited.");
 		SendChatTarget(TargetId, "You are no longer controlled.");
 	}
+}
+
+CNetObj_PlayerInput CGameContext::HoControlInput(int ControllerId, int TargetId, const CNetObj_PlayerInput *pInput)
+{
+	CNetObj_PlayerInput Input = *pInput;
+	Input.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+
+	if(!m_aHoControlInputInitialized[ControllerId])
+	{
+		m_aHoControlInputInitialized[ControllerId] = true;
+		m_aHoControlLastRawInput[ControllerId] = Input;
+		m_aHoControlLastAppliedInput[ControllerId] = m_aLastPlayerInput[TargetId];
+		m_aHoControlLastAppliedInput[ControllerId].m_Direction = Input.m_Direction;
+		m_aHoControlLastAppliedInput[ControllerId].m_Jump = Input.m_Jump;
+		m_aHoControlLastAppliedInput[ControllerId].m_Hook = Input.m_Hook;
+		m_aHoControlLastAppliedInput[ControllerId].m_TargetX = Input.m_TargetX;
+		m_aHoControlLastAppliedInput[ControllerId].m_TargetY = Input.m_TargetY;
+		m_aHoControlLastAppliedInput[ControllerId].m_PlayerFlags = Input.m_PlayerFlags;
+		m_aHoControlLastAppliedInput[ControllerId].m_WantedWeapon = Input.m_WantedWeapon;
+		return m_aHoControlLastAppliedInput[ControllerId];
+	}
+
+	if(mem_comp(&Input, &m_aHoControlLastRawInput[ControllerId], sizeof(Input)) == 0)
+		return m_aHoControlLastAppliedInput[ControllerId];
+
+	CNetObj_PlayerInput Applied = Input;
+	auto AdvanceCounter = [](int AppliedPrevious, int RawPrevious, int RawCurrent) {
+		return (AppliedPrevious + ((RawCurrent - RawPrevious) & INPUT_STATE_MASK)) & INPUT_STATE_MASK;
+	};
+	Applied.m_Fire = AdvanceCounter(m_aHoControlLastAppliedInput[ControllerId].m_Fire, m_aHoControlLastRawInput[ControllerId].m_Fire, Input.m_Fire);
+	Applied.m_NextWeapon = AdvanceCounter(m_aHoControlLastAppliedInput[ControllerId].m_NextWeapon, m_aHoControlLastRawInput[ControllerId].m_NextWeapon, Input.m_NextWeapon);
+	Applied.m_PrevWeapon = AdvanceCounter(m_aHoControlLastAppliedInput[ControllerId].m_PrevWeapon, m_aHoControlLastRawInput[ControllerId].m_PrevWeapon, Input.m_PrevWeapon);
+
+	m_aHoControlLastRawInput[ControllerId] = Input;
+	m_aHoControlLastAppliedInput[ControllerId] = Applied;
+	return Applied;
 }
 
 void CGameContext::OnTick()
@@ -1717,8 +1758,7 @@ void CGameContext::OnClientDirectInput(int ClientId, const void *pInput)
 	CNetObj_PlayerInput ControlInput;
 	if(ApplyClientId != ClientId)
 	{
-		ControlInput = *pPlayerInput;
-		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		ControlInput = HoControlInput(ClientId, ApplyClientId, pPlayerInput);
 		pPlayerInput = &ControlInput;
 	}
 
@@ -1751,8 +1791,7 @@ void CGameContext::OnClientPredictedInput(int ClientId, const void *pInput)
 	CNetObj_PlayerInput ControlInput;
 	if(ApplyClientId != ClientId)
 	{
-		ControlInput = *pApplyInput;
-		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		ControlInput = HoControlInput(ClientId, ApplyClientId, pApplyInput);
 		pApplyInput = &ControlInput;
 	}
 
@@ -1794,8 +1833,7 @@ void CGameContext::OnClientPredictedEarlyInput(int ClientId, const void *pInput)
 	CNetObj_PlayerInput ControlInput;
 	if(ApplyClientId != ClientId)
 	{
-		ControlInput = *pApplyInput;
-		ControlInput.m_PlayerFlags &= ~PLAYERFLAG_SPEC_CAM;
+		ControlInput = HoControlInput(ClientId, ApplyClientId, pApplyInput);
 		pApplyInput = &ControlInput;
 	}
 

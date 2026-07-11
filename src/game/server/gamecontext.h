@@ -163,6 +163,9 @@ private:
 	CNetObj_PlayerInput m_aHoFakePlayerInput[MAX_CLIENTS];
 	int m_aHoControlTarget[MAX_CLIENTS];
 	int m_aHoControlledBy[MAX_CLIENTS];
+	bool m_aHoControlInputInitialized[MAX_CLIENTS];
+	CNetObj_PlayerInput m_aHoControlLastRawInput[MAX_CLIENTS];
+	CNetObj_PlayerInput m_aHoControlLastAppliedInput[MAX_CLIENTS];
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -385,6 +388,7 @@ public:
 	void UpdateHoFakePlayers();
 	bool StartHoControl(int ControllerId, int TargetId);
 	void StopHoControl(int ControllerId, bool Chat);
+	CNetObj_PlayerInput HoControlInput(int ControllerId, int TargetId, const CNetObj_PlayerInput *pInput);
 
 	void *PreProcessMsg(int *pMsgId, CUnpacker *pUnpacker, int ClientId);
 	void CensorMessage(char *pCensoredMessage, const char *pMessage, int Size);

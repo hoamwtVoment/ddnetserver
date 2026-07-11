@@ -1213,6 +1213,14 @@ void CCharacter::SnapCharacter(int SnappingClient, int Id)
 
 		if(Character.m_HookedPlayer != -1)
 		{
+			const int HoControlTarget = GameServer()->HoControlTarget(SnappingClient);
+			if(HoControlTarget != -1)
+			{
+				if(Character.m_HookedPlayer == SnappingClient)
+					Character.m_HookedPlayer = HoControlTarget;
+				else if(Character.m_HookedPlayer == HoControlTarget)
+					Character.m_HookedPlayer = SnappingClient;
+			}
 			if(!Server()->Translate(Character.m_HookedPlayer, SnappingClient))
 				Character.m_HookedPlayer = -1;
 		}
@@ -1240,6 +1248,19 @@ void CCharacter::SnapCharacter(int SnappingClient, int Id)
 		// m_HookTick can be negative when using the hook_duration tune, which 0.7 clients
 		// will consider invalid. https://github.com/ddnet/ddnet/issues/3915
 		Character.m_HookTick = std::max(0, Character.m_HookTick);
+		if(Character.m_HookedPlayer != -1)
+		{
+			const int HoControlTarget = GameServer()->HoControlTarget(SnappingClient);
+			if(HoControlTarget != -1)
+			{
+				if(Character.m_HookedPlayer == SnappingClient)
+					Character.m_HookedPlayer = HoControlTarget;
+				else if(Character.m_HookedPlayer == HoControlTarget)
+					Character.m_HookedPlayer = SnappingClient;
+			}
+			if(!Server()->Translate(Character.m_HookedPlayer, SnappingClient))
+				Character.m_HookedPlayer = -1;
+		}
 
 		Character.m_Tick = Tick;
 		Character.m_Emote = Emote;
