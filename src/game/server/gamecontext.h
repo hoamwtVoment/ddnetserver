@@ -158,6 +158,9 @@ private:
 	int m_HoTickStepTicks;
 	float m_HoTickRate;
 	float m_HoTickRateAccumulator;
+	bool m_aHoFakePlayer[MAX_CLIENTS];
+	bool m_aHoFakePlayerAimbot[MAX_CLIENTS];
+	CNetObj_PlayerInput m_aHoFakePlayerInput[MAX_CLIENTS];
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -187,6 +190,7 @@ private:
 	static void ConHoTick(IConsole::IResult *pResult, void *pUserData);
 	static void ConSay(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoFakePlayer(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeam(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeamAll(IConsole::IResult *pResult, void *pUserData);
 	static void ConHotReload(IConsole::IResult *pResult, void *pUserData);
@@ -373,6 +377,7 @@ public:
 	void OnPostGlobalSnap() override;
 
 	void UpdatePlayerMaps();
+	void UpdateHoFakePlayers();
 
 	void *PreProcessMsg(int *pMsgId, CUnpacker *pUnpacker, int ClientId);
 	void CensorMessage(char *pCensoredMessage, const char *pMessage, int Size);

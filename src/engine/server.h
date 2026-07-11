@@ -65,6 +65,9 @@ public:
 	virtual int ClientCountry(int ClientId) const = 0;
 	virtual bool ClientSlotEmpty(int ClientId) const = 0;
 	virtual bool ClientIngame(int ClientId) const = 0;
+	virtual bool IsFakeClient(int ClientId) const = 0;
+	virtual bool CreateFakeClient(int ClientId, bool ShowInList, const char *pName, const char *pClan, int Country) = 0;
+	virtual bool DropFakeClient(int ClientId, const char *pReason) = 0;
 	virtual bool GetClientInfo(int ClientId, CClientInfo *pInfo) const = 0;
 	virtual void SetClientDDNetVersion(int ClientId, int DDNetVersion) = 0;
 	virtual const NETADDR *ClientAddr(int ClientId) const = 0;

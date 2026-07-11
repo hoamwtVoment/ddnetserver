@@ -173,6 +173,8 @@ public:
 		int m_Flags;
 		bool m_ShowIps;
 		bool m_DebugDummy;
+		bool m_HoFakePlayer;
+		bool m_HoFakePlayerShowInList;
 		bool m_ForceHighBandwidthOnSpectate;
 		NETADDR m_DebugDummyAddr;
 		std::array<char, NETADDR_MAXSTRSIZE> m_aDebugDummyAddrString;
@@ -209,7 +211,7 @@ public:
 
 		bool IncludedInServerInfo() const
 		{
-			return m_State != STATE_EMPTY && !m_DebugDummy;
+			return m_State != STATE_EMPTY && !m_DebugDummy && (!m_HoFakePlayer || m_HoFakePlayerShowInList);
 		}
 	};
 
@@ -330,6 +332,9 @@ public:
 	int ClientCountry(int ClientId) const override;
 	bool ClientSlotEmpty(int ClientId) const override;
 	bool ClientIngame(int ClientId) const override;
+	bool IsFakeClient(int ClientId) const override;
+	bool CreateFakeClient(int ClientId, bool ShowInList, const char *pName, const char *pClan, int Country) override;
+	bool DropFakeClient(int ClientId, const char *pReason) override;
 	int Port() const override;
 	int MaxClients() const override;
 	int ClientCount() const override;

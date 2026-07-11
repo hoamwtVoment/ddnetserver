@@ -608,6 +608,8 @@ int CServer::Init()
 		Client.m_TrafficSince = 0;
 		Client.m_ShowIps = false;
 		Client.m_DebugDummy = false;
+		Client.m_HoFakePlayer = false;
+		Client.m_HoFakePlayerShowInList = false;
 		Client.m_AuthKey = -1;
 		Client.m_Latency = 0;
 		Client.m_Sixup = false;
@@ -742,7 +744,7 @@ const NETADDR *CServer::ClientAddr(int ClientId) const
 {
 	dbg_assert(ClientId >= 0 && ClientId < MAX_CLIENTS, "Invalid ClientId: %d", ClientId);
 	dbg_assert(m_aClients[ClientId].m_State != CServer::CClient::STATE_EMPTY, "Client slot %d is empty", ClientId);
-	if(m_aClients[ClientId].m_DebugDummy)
+	if(m_aClients[ClientId].m_DebugDummy || m_aClients[ClientId].m_HoFakePlayer)
 	{
 		return &m_aClients[ClientId].m_DebugDummyAddr;
 	}
@@ -753,7 +755,7 @@ const std::array<char, NETADDR_MAXSTRSIZE> &CServer::ClientAddrStringImpl(int Cl
 {
 	dbg_assert(ClientId >= 0 && ClientId < MAX_CLIENTS, "Invalid ClientId: %d", ClientId);
 	dbg_assert(m_aClients[ClientId].m_State != CServer::CClient::STATE_EMPTY, "Client slot %d is empty", ClientId);
-	if(m_aClients[ClientId].m_DebugDummy)
+	if(m_aClients[ClientId].m_DebugDummy || m_aClients[ClientId].m_HoFakePlayer)
 	{
 		return IncludePort ? m_aClients[ClientId].m_aDebugDummyAddrString : m_aClients[ClientId].m_aDebugDummyAddrStringNoPort;
 	}
@@ -798,6 +800,75 @@ bool CServer::ClientSlotEmpty(int ClientId) const
 bool CServer::ClientIngame(int ClientId) const
 {
 	return ClientId >= 0 && ClientId < MAX_CLIENTS && m_aClients[ClientId].m_State == CServer::CClient::STATE_INGAME;
+}
+
+bool CServer::IsFakeClient(int ClientId) const
+{
+	return ClientId >= 0 && ClientId < MAX_CLIENTS && m_aClients[ClientId].m_HoFakePlayer;
+}
+
+bool CServer::CreateFakeClient(int ClientId, bool ShowInList, const char *pName, const char *pClan, int Country)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || m_aClients[ClientId].m_State != CClient::STATE_EMPTY)
+		return false;
+
+	CClient &Client = m_aClients[ClientId];
+	Client.m_State = CClient::STATE_INGAME;
+	Client.m_DnsblState = EDnsblState::NONE;
+	Client.m_aName[0] = 0;
+	Client.m_aClan[0] = 0;
+	Client.m_Country = Country;
+	Client.m_AuthKey = -1;
+	Client.m_AuthTries = 0;
+	Client.m_AuthHidden = false;
+	Client.m_pRconCmdToSend = nullptr;
+	Client.m_MaplistEntryToSend = CClient::MAPLIST_UNINITIALIZED;
+	Client.m_Traffic = 0;
+	Client.m_TrafficSince = 0;
+	Client.m_ShowIps = false;
+	Client.m_DebugDummy = false;
+	Client.m_HoFakePlayer = true;
+	Client.m_HoFakePlayerShowInList = ShowInList;
+	Client.m_ForceHighBandwidthOnSpectate = false;
+	Client.m_DDNetVersion = VERSION_NONE;
+	Client.m_GotDDNetVersionPacket = false;
+	Client.m_DDNetVersionSettled = false;
+	Client.m_Sixup = false;
+	Client.m_RedirectDropTime = 0;
+	Client.m_HasPersistentData = false;
+	Client.Reset();
+
+	Client.m_DebugDummyAddr.type = NETTYPE_IPV6;
+	Client.m_DebugDummyAddr.ip[0] = 0xfd;
+	secure_random_fill(&Client.m_DebugDummyAddr.ip[1], 5);
+	Client.m_DebugDummyAddr.ip[6] = 0xc0;
+	Client.m_DebugDummyAddr.ip[7] = 0xde;
+	Client.m_DebugDummyAddr.ip[8] = 0x00;
+	Client.m_DebugDummyAddr.ip[9] = 0x00;
+	Client.m_DebugDummyAddr.ip[10] = 0x00;
+	Client.m_DebugDummyAddr.ip[11] = 0x00;
+	uint_to_bytes_be(&Client.m_DebugDummyAddr.ip[12], ClientId);
+	Client.m_DebugDummyAddr.port = secure_rand_below(65535 - 1024) + 1024;
+	net_addr_str(&Client.m_DebugDummyAddr, Client.m_aDebugDummyAddrString.data(), Client.m_aDebugDummyAddrString.size(), true);
+	net_addr_str(&Client.m_DebugDummyAddr, Client.m_aDebugDummyAddrStringNoPort.data(), Client.m_aDebugDummyAddrStringNoPort.size(), false);
+
+	SetClientName(ClientId, pName);
+	SetClientClan(ClientId, pClan);
+	SetClientCountry(ClientId, Country);
+
+	GameServer()->TeehistorianRecordPlayerJoin(ClientId, false);
+	Antibot()->OnEngineClientJoin(ClientId);
+	ExpireServerInfo();
+	return true;
+}
+
+bool CServer::DropFakeClient(int ClientId, const char *pReason)
+{
+	if(!IsFakeClient(ClientId))
+		return false;
+
+	DelClientCallback(ClientId, pReason, this);
+	return true;
 }
 
 int CServer::Port() const
@@ -945,7 +1016,7 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientId)
 		{
 			for(int i = 0; i < MAX_CLIENTS; i++)
 			{
-				if(m_aClients[i].m_State == CClient::STATE_INGAME)
+				if(m_aClients[i].m_State == CClient::STATE_INGAME && !m_aClients[i].m_HoFakePlayer)
 				{
 					CPacker *pPack = m_aClients[i].m_Sixup ? &Pack7 : &Pack6;
 					Packet.m_pData = pPack->Data();
@@ -962,6 +1033,9 @@ int CServer::SendMsg(CMsgPacker *pMsg, int Flags, int ClientId)
 	}
 	else
 	{
+		if(ClientId >= 0 && ClientId < MAX_CLIENTS && m_aClients[ClientId].m_HoFakePlayer)
+			return 0;
+
 		CPacker Pack;
 		if(!RepackMsg(pMsg, Pack, m_aClients[ClientId].m_Sixup))
 			return -1;
@@ -1037,7 +1111,7 @@ void CServer::DoSnapshot()
 	for(int i = 0; i < MaxClients(); i++)
 	{
 		// client must be ingame to receive snapshots
-		if(m_aClients[i].m_State != CClient::STATE_INGAME)
+		if(m_aClients[i].m_State != CClient::STATE_INGAME || m_aClients[i].m_HoFakePlayer)
 			continue;
 
 		// this client is trying to recover, don't spam snapshots
@@ -1200,6 +1274,8 @@ int CServer::NewClientNoAuthCallback(int ClientId, void *pUser)
 	pThis->m_aClients[ClientId].m_MaplistEntryToSend = CClient::MAPLIST_UNINITIALIZED;
 	pThis->m_aClients[ClientId].m_ShowIps = false;
 	pThis->m_aClients[ClientId].m_DebugDummy = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayer = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayerShowInList = false;
 	pThis->m_aClients[ClientId].m_ForceHighBandwidthOnSpectate = false;
 	pThis->m_aClients[ClientId].m_DDNetVersion = VERSION_NONE;
 	pThis->m_aClients[ClientId].m_GotDDNetVersionPacket = false;
@@ -1234,6 +1310,8 @@ int CServer::NewClientCallback(int ClientId, void *pUser, bool Sixup)
 	pThis->m_aClients[ClientId].m_TrafficSince = 0;
 	pThis->m_aClients[ClientId].m_ShowIps = false;
 	pThis->m_aClients[ClientId].m_DebugDummy = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayer = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayerShowInList = false;
 	pThis->m_aClients[ClientId].m_ForceHighBandwidthOnSpectate = false;
 	pThis->m_aClients[ClientId].m_DDNetVersion = VERSION_NONE;
 	pThis->m_aClients[ClientId].m_GotDDNetVersionPacket = false;
@@ -1323,6 +1401,8 @@ int CServer::DelClientCallback(int ClientId, const char *pReason, void *pUser)
 	pThis->m_aClients[ClientId].m_TrafficSince = 0;
 	pThis->m_aClients[ClientId].m_ShowIps = false;
 	pThis->m_aClients[ClientId].m_DebugDummy = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayer = false;
+	pThis->m_aClients[ClientId].m_HoFakePlayerShowInList = false;
 	pThis->m_aClients[ClientId].m_ForceHighBandwidthOnSpectate = false;
 	pThis->m_aPrevStates[ClientId] = CClient::STATE_EMPTY;
 	pThis->m_aClients[ClientId].m_Snapshots.PurgeAll();

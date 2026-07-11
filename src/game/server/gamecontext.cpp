@@ -113,6 +113,9 @@ CGameContext::CGameContext(bool Resetting) :
 	m_HoTickStepTicks = 0;
 	m_HoTickRate = SERVER_TICK_SPEED;
 	m_HoTickRateAccumulator = 0.0f;
+	std::fill(std::begin(m_aHoFakePlayer), std::end(m_aHoFakePlayer), false);
+	std::fill(std::begin(m_aHoFakePlayerAimbot), std::end(m_aHoFakePlayerAimbot), false);
+	mem_zero(&m_aHoFakePlayerInput, sizeof(m_aHoFakePlayerInput));
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1146,6 +1149,55 @@ void CGameContext::OnPreTickTeehistorian()
 	}
 }
 
+void CGameContext::UpdateHoFakePlayers()
+{
+	for(int ClientId = 0; ClientId < MAX_CLIENTS; ++ClientId)
+	{
+		CPlayer *pPlayer = m_apPlayers[ClientId];
+		if(!m_aHoFakePlayer[ClientId] || !pPlayer || !Server()->IsFakeClient(ClientId))
+			continue;
+
+		CNetObj_PlayerInput Input = m_aHoFakePlayerInput[ClientId];
+		Input.m_PlayerFlags = PLAYERFLAG_PLAYING;
+		if(Input.m_TargetX == 0 && Input.m_TargetY == 0)
+			Input.m_TargetY = -1;
+
+		if(m_aHoFakePlayerAimbot[ClientId])
+		{
+			if(CCharacter *pCharacter = pPlayer->GetCharacter())
+			{
+				const vec2 Pos = pCharacter->GetPos();
+				float BestDistance = -1.0f;
+				vec2 BestDelta = vec2(0.0f, -1.0f);
+				for(int OtherId = 0; OtherId < MAX_CLIENTS; ++OtherId)
+				{
+					if(OtherId == ClientId || !m_apPlayers[OtherId])
+						continue;
+					CCharacter *pOtherCharacter = m_apPlayers[OtherId]->GetCharacter();
+					if(!pOtherCharacter)
+						continue;
+					const vec2 Delta = pOtherCharacter->GetPos() - Pos;
+					const float Distance = length(Delta);
+					if(BestDistance < 0.0f || Distance < BestDistance)
+					{
+						BestDistance = Distance;
+						BestDelta = Delta;
+					}
+				}
+				Input.m_TargetX = round_to_int(BestDelta.x);
+				Input.m_TargetY = round_to_int(BestDelta.y);
+				if(Input.m_TargetX == 0 && Input.m_TargetY == 0)
+					Input.m_TargetY = -1;
+			}
+		}
+
+		m_aHoFakePlayerInput[ClientId] = Input;
+		pPlayer->OnDirectInput(&Input);
+		pPlayer->OnPredictedEarlyInput(&Input);
+		pPlayer->OnPredictedInput(&Input);
+	}
+}
+
 void CGameContext::OnTick()
 {
 	if(m_TeeHistorianActive)
@@ -1207,6 +1259,8 @@ void CGameContext::OnTick()
 
 	for(int Tick = 0; Tick < HoTickGameTicks; ++Tick)
 	{
+		UpdateHoFakePlayers();
+
 		// copy tuning
 		*m_World.GetTuning(0) = m_aTuningList[0];
 		m_World.Tick();
@@ -1983,6 +2037,10 @@ void CGameContext::OnClientConnected(int ClientId, void *pData)
 void CGameContext::OnClientDrop(int ClientId, const char *pReason)
 {
 	LogEvent("Disconnect", ClientId);
+
+	m_aHoFakePlayer[ClientId] = false;
+	m_aHoFakePlayerAimbot[ClientId] = false;
+	mem_zero(&m_aHoFakePlayerInput[ClientId], sizeof(m_aHoFakePlayerInput[ClientId]));
 
 	AbortVoteKickOnDisconnect(ClientId);
 	m_pController->OnPlayerDisconnect(m_apPlayers[ClientId], pReason);
@@ -3905,6 +3963,94 @@ void CGameContext::ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData)
 	}
 }
 
+void CGameContext::ConHoFakePlayer(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	int ClientId = -1;
+	if(pResult->NumArguments() > 0)
+	{
+		ClientId = pResult->GetInteger(0);
+	}
+	else
+	{
+		for(int i = pSelf->Server()->MaxClients() - 1; i >= 0; --i)
+		{
+			if(pSelf->Server()->ClientSlotEmpty(i) && !pSelf->m_apPlayers[i])
+			{
+				ClientId = i;
+				break;
+			}
+		}
+	}
+	const bool ShowInList = pResult->NumArguments() > 1 ? pResult->GetInteger(1) != 0 : false;
+	const char *pName = pResult->NumArguments() > 2 ? pResult->GetString(2) : "bot";
+	const int Team = pResult->NumArguments() > 3 ? pResult->GetInteger(3) : TEAM_GAME;
+	const char *pClan = pResult->NumArguments() > 4 ? pResult->GetString(4) : "";
+	const int Country = pResult->NumArguments() > 5 ? pResult->GetInteger(5) : CountryCode::DEFAULT;
+	const char *pEmotion = pResult->NumArguments() > 6 ? pResult->GetString(6) : "normal";
+	const bool Aimbot = pResult->NumArguments() > 7 ? pResult->GetInteger(7) != 0 : false;
+
+	if(!CheckClientId(ClientId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", pResult->NumArguments() > 0 ? "invalid client id" : "no free client slot");
+		return;
+	}
+	if(!pSelf->Server()->ClientSlotEmpty(ClientId) || pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", "client slot is not empty");
+		return;
+	}
+	if(!pSelf->m_pController->IsValidTeam(Team))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", "invalid team");
+		return;
+	}
+	if(pName[0] == '\0')
+		pName = "bot";
+
+	int Emote = EMOTE_NORMAL;
+	if(str_comp_nocase(pEmotion, "angry") == 0)
+		Emote = EMOTE_ANGRY;
+	else if(str_comp_nocase(pEmotion, "blink") == 0 || str_comp_nocase(pEmotion, "close") == 0)
+		Emote = EMOTE_BLINK;
+	else if(str_comp_nocase(pEmotion, "happy") == 0)
+		Emote = EMOTE_HAPPY;
+	else if(str_comp_nocase(pEmotion, "pain") == 0)
+		Emote = EMOTE_PAIN;
+	else if(str_comp_nocase(pEmotion, "surprise") == 0)
+		Emote = EMOTE_SURPRISE;
+	else if(str_comp_nocase(pEmotion, "normal") == 0)
+		Emote = EMOTE_NORMAL;
+	else if(!str_toint(pEmotion, &Emote))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", "unknown emotion, use normal|pain|happy|surprise|angry|blink");
+		return;
+	}
+
+	if(!pSelf->Server()->CreateFakeClient(ClientId, ShowInList, pName, pClan, Country))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", "failed to create fake player");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->CreatePlayer(ClientId, Team, false, -1);
+	pPlayer->m_IsReady = true;
+	pPlayer->SetDefaultEmote(Emote);
+	pSelf->m_aHoFakePlayer[ClientId] = true;
+	pSelf->m_aHoFakePlayerAimbot[ClientId] = Aimbot;
+	mem_zero(&pSelf->m_aHoFakePlayerInput[ClientId], sizeof(pSelf->m_aHoFakePlayerInput[ClientId]));
+	pSelf->m_aHoFakePlayerInput[ClientId].m_TargetY = -1;
+	pSelf->m_aHoFakePlayerInput[ClientId].m_PlayerFlags = PLAYERFLAG_PLAYING;
+
+	pSelf->OnClientEnter(ClientId);
+	if(CCharacter *pChr = pPlayer->GetCharacter())
+		pChr->SetEmote(Emote, -1);
+
+	char aBuf[192];
+	str_format(aBuf, sizeof(aBuf), "fake player %d created (show in list=%d, aimbot=%d). Showing fake players in the server list may get the server banned by list servers.", ClientId, ShowInList ? 1 : 0, Aimbot ? 1 : 0);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", aBuf);
+}
+
 void CGameContext::ConSetTeam(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -4415,6 +4561,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("ho_tick", "?s[action] ?s[value]", CFGFLAG_SERVER, ConHoTick, this, "Minecraft-like tick control: status, freeze, unfreeze, rate [tps], step [ticks]");
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
+	Console()->Register("ho_fakeplayer", "?i[id] ?i[show in list] ?s[name] ?i[team] ?s[clan] ?i[country] ?s[emotion] ?i[aimbot]", CFGFLAG_SERVER, ConHoFakePlayer, this, "Add a fake player. With no args uses the highest free id. show in list=1 may get the server banned by list servers; emotion: normal|pain|happy|surprise|angry|blink; aimbot aims at nearest player");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
 	Console()->Register("set_team_all", "i[team-id]", CFGFLAG_SERVER, ConSetTeamAll, this, "Set team for all players (spectators = -1, game = 0)");
 	Console()->Register("hot_reload", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConHotReload, this, "Reload the map while preserving the state of tees and teams");
