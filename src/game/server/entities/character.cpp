@@ -1316,10 +1316,8 @@ void CCharacter::Snap(int SnappingClient)
 	int Id = m_pPlayer->GetCid();
 	const int HoControlTarget = GameServer()->HoControlTarget(SnappingClient);
 	const bool HoControlLocalTarget = HoControlTarget == Id;
-	if(GameServer()->HoControlledBy(SnappingClient) != -1)
-		return;
 	if(HoControlTarget != -1 && Id == SnappingClient)
-		return;
+		Id = HoControlTarget;
 	if(HoControlLocalTarget)
 		Id = SnappingClient;
 
