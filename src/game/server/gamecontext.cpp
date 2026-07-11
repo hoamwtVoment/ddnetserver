@@ -4561,7 +4561,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("ho_tick", "?s[action] ?s[value]", CFGFLAG_SERVER, ConHoTick, this, "Minecraft-like tick control: status, freeze, unfreeze, rate [tps], step [ticks]");
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
-	Console()->Register("ho_fakeplayer", "?i[id] ?i[show in list] ?s[name] ?i[team] ?s[clan] ?i[country] ?s[emotion] ?i[aimbot]", CFGFLAG_SERVER, ConHoFakePlayer, this, "Add a fake player. With no args uses the highest free id. show in list=1 may get the server banned by list servers; emotion: normal|pain|happy|surprise|angry|blink; aimbot aims at nearest player");
+	Console()->Register("ho_fakeplayer", "?i[id] ?i[list] ?s[name] ?i[team] ?s[clan] ?i[country] ?s[emote] ?i[aimbot]", CFGFLAG_SERVER, ConHoFakePlayer, this, "Add fake player. No id=max free. list=1 may risk list ban.");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
 	Console()->Register("set_team_all", "i[team-id]", CFGFLAG_SERVER, ConSetTeamAll, this, "Set team for all players (spectators = -1, game = 0)");
 	Console()->Register("hot_reload", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConHotReload, this, "Reload the map while preserving the state of tees and teams");
