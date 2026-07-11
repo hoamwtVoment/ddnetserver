@@ -116,6 +116,8 @@ CGameContext::CGameContext(bool Resetting) :
 	std::fill(std::begin(m_aHoFakePlayer), std::end(m_aHoFakePlayer), false);
 	std::fill(std::begin(m_aHoFakePlayerAimbot), std::end(m_aHoFakePlayerAimbot), false);
 	mem_zero(&m_aHoFakePlayerInput, sizeof(m_aHoFakePlayerInput));
+	std::fill(std::begin(m_aHoControlTarget), std::end(m_aHoControlTarget), -1);
+	std::fill(std::begin(m_aHoControlledBy), std::end(m_aHoControlledBy), -1);
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1198,6 +1200,67 @@ void CGameContext::UpdateHoFakePlayers()
 	}
 }
 
+bool CGameContext::StartHoControl(int ControllerId, int TargetId)
+{
+	if(!CheckClientId(ControllerId) || !CheckClientId(TargetId) || ControllerId == TargetId ||
+		!m_apPlayers[ControllerId] || !m_apPlayers[TargetId] ||
+		!Server()->ClientIngame(ControllerId) || !Server()->ClientIngame(TargetId))
+	{
+		return false;
+	}
+
+	if(m_aHoControlledBy[ControllerId] != -1)
+		return false;
+
+	StopHoControl(ControllerId, false);
+	if(m_aHoControlTarget[TargetId] != -1)
+		StopHoControl(TargetId, true);
+	if(m_aHoControlledBy[TargetId] != -1)
+		StopHoControl(m_aHoControlledBy[TargetId], true);
+
+	m_aHoControlTarget[ControllerId] = TargetId;
+	m_aHoControlledBy[TargetId] = ControllerId;
+
+	CNetObj_PlayerInput NeutralInput = {};
+	NeutralInput.m_TargetY = -1;
+	NeutralInput.m_PlayerFlags = PLAYERFLAG_PLAYING;
+	m_aLastPlayerInput[ControllerId] = NeutralInput;
+	m_aPlayerHasInput[ControllerId] = true;
+	if(!m_pController->IsGamePaused())
+	{
+		m_apPlayers[ControllerId]->OnDirectInput(&NeutralInput);
+		m_apPlayers[ControllerId]->OnPredictedEarlyInput(&NeutralInput);
+		m_apPlayers[ControllerId]->OnPredictedInput(&NeutralInput);
+	}
+
+	char aBuf[192];
+	str_format(aBuf, sizeof(aBuf), "You are controlling %s. Press F3 (vote yes) to exit.", Server()->ClientName(TargetId));
+	SendChatTarget(ControllerId, aBuf);
+	str_format(aBuf, sizeof(aBuf), "%s is controlling you. Your input is disabled.", Server()->ClientName(ControllerId));
+	SendChatTarget(TargetId, aBuf);
+	return true;
+}
+
+void CGameContext::StopHoControl(int ControllerId, bool Chat)
+{
+	if(!CheckClientId(ControllerId))
+		return;
+
+	const int TargetId = m_aHoControlTarget[ControllerId];
+	if(!CheckClientId(TargetId))
+		return;
+
+	m_aHoControlTarget[ControllerId] = -1;
+	if(m_aHoControlledBy[TargetId] == ControllerId)
+		m_aHoControlledBy[TargetId] = -1;
+
+	if(Chat)
+	{
+		SendChatTarget(ControllerId, "Control mode exited.");
+		SendChatTarget(TargetId, "You are no longer controlled.");
+	}
+}
+
 void CGameContext::OnTick()
 {
 	if(m_TeeHistorianActive)
@@ -1637,18 +1700,29 @@ void CGameContext::OnClientDirectInput(int ClientId, const void *pInput)
 {
 	const CNetObj_PlayerInput *pPlayerInput = static_cast<const CNetObj_PlayerInput *>(pInput);
 
-	if(!m_pController->IsGamePaused())
-		m_apPlayers[ClientId]->OnDirectInput(pPlayerInput);
-
-	int Flags = pPlayerInput->m_PlayerFlags;
+	const int Flags = pPlayerInput->m_PlayerFlags;
 	if((Flags & 256) || (Flags & 512))
 	{
 		Server()->Kick(ClientId, "please update your client or use DDNet client");
+		return;
 	}
+
+	if(m_aHoControlledBy[ClientId] != -1)
+		return;
+
+	const int ApplyClientId = CheckClientId(m_aHoControlTarget[ClientId]) ? m_aHoControlTarget[ClientId] : ClientId;
+	if(!m_apPlayers[ApplyClientId])
+		return;
+
+	if(!m_pController->IsGamePaused())
+		m_apPlayers[ApplyClientId]->OnDirectInput(pPlayerInput);
 }
 
 void CGameContext::OnClientPredictedInput(int ClientId, const void *pInput)
 {
+	if(m_aHoControlledBy[ClientId] != -1)
+		return;
+
 	const CNetObj_PlayerInput *pApplyInput = static_cast<const CNetObj_PlayerInput *>(pInput);
 
 	if(pApplyInput == nullptr)
@@ -1662,12 +1736,19 @@ void CGameContext::OnClientPredictedInput(int ClientId, const void *pInput)
 		pApplyInput = &m_aLastPlayerInput[ClientId];
 	}
 
+	const int ApplyClientId = CheckClientId(m_aHoControlTarget[ClientId]) ? m_aHoControlTarget[ClientId] : ClientId;
+	if(!m_apPlayers[ApplyClientId])
+		return;
+
 	if(!m_pController->IsGamePaused())
-		m_apPlayers[ClientId]->OnPredictedInput(pApplyInput);
+		m_apPlayers[ApplyClientId]->OnPredictedInput(pApplyInput);
 }
 
 void CGameContext::OnClientPredictedEarlyInput(int ClientId, const void *pInput)
 {
+	if(m_aHoControlledBy[ClientId] != -1)
+		return;
+
 	const CNetObj_PlayerInput *pApplyInput = static_cast<const CNetObj_PlayerInput *>(pInput);
 
 	if(pApplyInput == nullptr)
@@ -1690,12 +1771,22 @@ void CGameContext::OnClientPredictedEarlyInput(int ClientId, const void *pInput)
 		m_aPlayerHasInput[ClientId] = true;
 	}
 
+	const int ApplyClientId = CheckClientId(m_aHoControlTarget[ClientId]) ? m_aHoControlTarget[ClientId] : ClientId;
+	if(!m_apPlayers[ApplyClientId])
+		return;
+
+	if(ApplyClientId != ClientId)
+	{
+		mem_copy(&m_aLastPlayerInput[ApplyClientId], pApplyInput, sizeof(m_aLastPlayerInput[ApplyClientId]));
+		m_aPlayerHasInput[ApplyClientId] = true;
+	}
+
 	if(!m_pController->IsGamePaused())
-		m_apPlayers[ClientId]->OnPredictedEarlyInput(pApplyInput);
+		m_apPlayers[ApplyClientId]->OnPredictedEarlyInput(pApplyInput);
 
 	if(m_TeeHistorianActive)
 	{
-		m_TeeHistorian.RecordPlayerInput(ClientId, m_apPlayers[ClientId]->GetUniqueCid(), pApplyInput);
+		m_TeeHistorian.RecordPlayerInput(ApplyClientId, m_apPlayers[ApplyClientId]->GetUniqueCid(), pApplyInput);
 	}
 }
 
@@ -2041,6 +2132,11 @@ void CGameContext::OnClientDrop(int ClientId, const char *pReason)
 	m_aHoFakePlayer[ClientId] = false;
 	m_aHoFakePlayerAimbot[ClientId] = false;
 	mem_zero(&m_aHoFakePlayerInput[ClientId], sizeof(m_aHoFakePlayerInput[ClientId]));
+	StopHoControl(ClientId, false);
+	if(CheckClientId(m_aHoControlledBy[ClientId]))
+		StopHoControl(m_aHoControlledBy[ClientId], false);
+	m_aHoControlTarget[ClientId] = -1;
+	m_aHoControlledBy[ClientId] = -1;
 
 	AbortVoteKickOnDisconnect(ClientId);
 	m_pController->OnPlayerDisconnect(m_apPlayers[ClientId], pReason);
@@ -2824,6 +2920,12 @@ void CGameContext::OnCallVoteNetMessage(const CNetMsg_Cl_CallVote *pMsg, int Cli
 
 void CGameContext::OnVoteNetMessage(const CNetMsg_Cl_Vote *pMsg, int ClientId)
 {
+	if(pMsg->m_Vote > 0 && CheckClientId(m_aHoControlTarget[ClientId]))
+	{
+		StopHoControl(ClientId, true);
+		return;
+	}
+
 	if(!m_VoteCloseTime)
 		return;
 
@@ -4051,6 +4153,39 @@ void CGameContext::ConHoFakePlayer(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_fakeplayer", aBuf);
 }
 
+void CGameContext::ConHoControl(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	if(pResult->NumArguments() <= 0)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_control", "usage: ho_control [target id] or ho_control [controller id] [target id]");
+		return;
+	}
+
+	int ControllerId = pResult->m_ClientId;
+	int TargetId = pResult->GetInteger(0);
+	if(pResult->NumArguments() >= 2)
+	{
+		ControllerId = pResult->GetInteger(0);
+		TargetId = pResult->GetInteger(1);
+	}
+	else if(!CheckClientId(ControllerId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_control", "server console must use: ho_control [controller id] [target id]");
+		return;
+	}
+
+	if(!pSelf->StartHoControl(ControllerId, TargetId))
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_control", "failed to start control mode");
+		return;
+	}
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "client %d now controls client %d", ControllerId, TargetId);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_control", aBuf);
+}
+
 void CGameContext::ConSetTeam(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -4562,6 +4697,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("say", "r[message]", CFGFLAG_SERVER, ConSay, this, "Say in chat");
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
 	Console()->Register("ho_fakeplayer", "?i[id] ?i[list] ?s[name] ?i[team] ?s[clan] ?i[country] ?s[emote] ?i[aimbot]", CFGFLAG_SERVER, ConHoFakePlayer, this, "Add fake player. No id=max free. list=1 may risk list ban.");
+	Console()->Register("ho_control", "i[id] ?i[id]", CFGFLAG_SERVER, ConHoControl, this, "Control target, or make first id control second id. Press F3/vote yes to exit");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
 	Console()->Register("set_team_all", "i[team-id]", CFGFLAG_SERVER, ConSetTeamAll, this, "Set team for all players (spectators = -1, game = 0)");
 	Console()->Register("hot_reload", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConHotReload, this, "Reload the map while preserving the state of tees and teams");
