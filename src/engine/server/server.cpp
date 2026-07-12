@@ -271,6 +271,8 @@ CServer::CServer()
 	m_RconAuthLevel = AUTHED_ADMIN;
 	m_aStdinConsoleInput[0] = '\0';
 	m_StdinConsoleInputLength = 0;
+	m_StdinConsoleInputStartX = -1;
+	m_StdinConsoleInputStartY = -1;
 	m_StdinConsoleEnabled = false;
 
 	m_ServerInfoFirstRequest = 0;
@@ -3204,6 +3206,50 @@ void CServer::UpdateDebugDummies(bool ForceDisconnect)
 	m_PreviousDebugDummies = ForceDisconnect ? 0 : g_Config.m_DbgDummies;
 }
 
+void CServer::RedrawStdinConsoleInput()
+{
+#if defined(CONF_FAMILY_WINDOWS)
+	if(!m_StdinConsoleEnabled || m_StdinConsoleInputLength <= 0)
+		return;
+
+	HANDLE Stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+	if(Stdout == INVALID_HANDLE_VALUE || Stdout == nullptr)
+		return;
+
+	CONSOLE_SCREEN_BUFFER_INFO ConsoleInfo;
+	if(!GetConsoleScreenBufferInfo(Stdout, &ConsoleInfo))
+		return;
+
+	if(m_StdinConsoleInputStartX < 0 || m_StdinConsoleInputStartY < 0)
+	{
+		m_StdinConsoleInputStartX = ConsoleInfo.dwCursorPosition.X;
+		m_StdinConsoleInputStartY = ConsoleInfo.dwCursorPosition.Y;
+		return;
+	}
+
+	const COORD CurrentPos = ConsoleInfo.dwCursorPosition;
+	const COORD OldStart = {(SHORT)m_StdinConsoleInputStartX, (SHORT)m_StdinConsoleInputStartY};
+	if(CurrentPos.Y == OldStart.Y)
+		return;
+
+	DWORD Written = 0;
+	const int ClearLength = std::max<int>(0, ConsoleInfo.dwSize.X - OldStart.X);
+	FillConsoleOutputCharacterW(Stdout, L' ', ClearLength, OldStart, &Written);
+	FillConsoleOutputAttribute(Stdout, ConsoleInfo.wAttributes, ClearLength, OldStart, &Written);
+
+	SetConsoleCursorPosition(Stdout, CurrentPos);
+
+	wchar_t aWideInput[IConsole::CMDLINE_LENGTH];
+	const int WideLength = MultiByteToWideChar(CP_UTF8, 0, m_aStdinConsoleInput, -1, aWideInput, std::size(aWideInput));
+	if(WideLength > 0)
+	{
+		WriteConsoleW(Stdout, aWideInput, WideLength - 1, &Written, nullptr);
+		m_StdinConsoleInputStartX = CurrentPos.X;
+		m_StdinConsoleInputStartY = CurrentPos.Y;
+	}
+#endif
+}
+
 void CServer::UpdateStdinConsole()
 {
 #if defined(CONF_FAMILY_WINDOWS)
@@ -3217,8 +3263,15 @@ void CServer::UpdateStdinConsole()
 	m_StdinConsoleEnabled = true;
 
 	DWORD NumEvents = 0;
-	if(!GetNumberOfConsoleInputEvents(Stdin, &NumEvents) || NumEvents == 0)
+	if(!GetNumberOfConsoleInputEvents(Stdin, &NumEvents))
 		return;
+	if(NumEvents == 0)
+	{
+		RedrawStdinConsoleInput();
+		return;
+	}
+
+	RedrawStdinConsoleInput();
 
 	while(NumEvents > 0)
 	{
@@ -3248,6 +3301,8 @@ void CServer::UpdateStdinConsole()
 				}
 				m_StdinConsoleInputLength = 0;
 				m_aStdinConsoleInput[0] = '\0';
+				m_StdinConsoleInputStartX = -1;
+				m_StdinConsoleInputStartY = -1;
 				continue;
 			}
 
@@ -3259,6 +3314,11 @@ void CServer::UpdateStdinConsole()
 					m_aStdinConsoleInput[m_StdinConsoleInputLength] = '\0';
 					fputs("\b \b", stdout);
 					fflush(stdout);
+					if(m_StdinConsoleInputLength == 0)
+					{
+						m_StdinConsoleInputStartX = -1;
+						m_StdinConsoleInputStartY = -1;
+					}
 				}
 				continue;
 			}
@@ -3270,6 +3330,17 @@ void CServer::UpdateStdinConsole()
 			const int EncodedLength = str_utf8_encode(aEncoded, WideChar);
 			if(EncodedLength <= 0 || m_StdinConsoleInputLength + EncodedLength >= (int)sizeof(m_aStdinConsoleInput))
 				continue;
+
+			if(m_StdinConsoleInputLength == 0)
+			{
+				HANDLE Stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+				CONSOLE_SCREEN_BUFFER_INFO ConsoleInfo;
+				if(Stdout != INVALID_HANDLE_VALUE && Stdout != nullptr && GetConsoleScreenBufferInfo(Stdout, &ConsoleInfo))
+				{
+					m_StdinConsoleInputStartX = ConsoleInfo.dwCursorPosition.X;
+					m_StdinConsoleInputStartY = ConsoleInfo.dwCursorPosition.Y;
+				}
+			}
 
 			mem_copy(&m_aStdinConsoleInput[m_StdinConsoleInputLength], aEncoded, EncodedLength);
 			m_StdinConsoleInputLength += EncodedLength;

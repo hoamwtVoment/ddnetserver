@@ -230,6 +230,8 @@ public:
 	CServerBan m_ServerBan;
 	char m_aStdinConsoleInput[IConsole::CMDLINE_LENGTH];
 	int m_StdinConsoleInputLength;
+	int m_StdinConsoleInputStartX;
+	int m_StdinConsoleInputStartY;
 	bool m_StdinConsoleEnabled;
 
 	int64_t m_GameStartTime;
@@ -314,6 +316,7 @@ public:
 
 	int Init();
 	void UpdateStdinConsole();
+	void RedrawStdinConsoleInput();
 
 	static bool StrHideIps(const char *pInput, char *pOutputWithIps, size_t OutputWithIpsSize, char *pOutputWithoutIps, size_t OutputWithoutIpsSize);
 	void SendLogLine(const CLogMessage *pMessage);
