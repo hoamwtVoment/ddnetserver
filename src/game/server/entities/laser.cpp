@@ -129,6 +129,13 @@ void CLaser::DoBounce()
 	{
 		if(!HitCharacter(m_Pos, To))
 		{
+			if(m_Type == WEAPON_LASER && (Res == TILE_SOLID || Res == TILE_NOHOOK) && GameServer()->TryCreateHoPortal(m_Owner, Coltile, m_Dir))
+			{
+				m_From = m_Pos;
+				m_Pos = To;
+				m_Energy = -1;
+				return;
+			}
 			// intersected
 			m_From = m_Pos;
 			m_Pos = To;

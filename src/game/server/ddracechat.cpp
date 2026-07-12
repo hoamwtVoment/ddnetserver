@@ -2143,6 +2143,83 @@ void CGameContext::ConPracticeLaser(IConsole::IResult *pResult, void *pUserData)
 		ConLaser(pResult, pUserData);
 }
 
+void CGameContext::ConHoLaserMode(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+		return;
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pResult->NumArguments() > 0)
+	{
+		const int Mode = pResult->GetInteger(0);
+		if(Mode >= 0 && Mode <= 2)
+		{
+			pPlayer->m_HoLaserMode = Mode;
+			if(Mode > 0)
+				pPlayer->m_HoLastPortalMode = Mode;
+		}
+	}
+
+	const char *pMode = pPlayer->m_HoLaserMode == 0 ? "CLASSIC" : (pPlayer->m_HoLaserMode == 1 ? "PORTAL 1" : "PORTAL 2");
+	char aBuf[64];
+	str_format(aBuf, sizeof(aBuf), "Laser mode: %s", pMode);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+}
+
+void CGameContext::ConHoPortal(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+		return;
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pResult->NumArguments() > 0)
+	{
+		const int Mode = pResult->GetInteger(0);
+		if(Mode >= 1 && Mode <= 2)
+			pPlayer->m_HoLaserMode = Mode;
+	}
+	else if(pPlayer->m_HoLaserMode == 0)
+	{
+		pPlayer->m_HoLaserMode = 1;
+	}
+
+	pPlayer->m_HoLaserMode = pPlayer->m_HoLaserMode == 1 ? 2 : 1;
+	pPlayer->m_HoLastPortalMode = pPlayer->m_HoLaserMode;
+	char aBuf[64];
+	str_format(aBuf, sizeof(aBuf), "Laser mode: PORTAL %d", pPlayer->m_HoLaserMode);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+}
+
+void CGameContext::ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+		return;
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pPlayer->m_HoLaserMode == 0)
+	{
+		pPlayer->m_HoLaserMode = pPlayer->m_HoLastPortalMode;
+	}
+	else
+	{
+		pPlayer->m_HoLastPortalMode = pPlayer->m_HoLaserMode;
+		pPlayer->m_HoLaserMode = 0;
+	}
+
+	char aBuf[80];
+	if(pPlayer->m_HoLaserMode == 0)
+		str_copy(aBuf, "Portal gun: off (CLASSIC)");
+	else
+		str_format(aBuf, sizeof(aBuf), "Portal gun: on (PORTAL %d)", pPlayer->m_HoLaserMode);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+}
+
 void CGameContext::ConPracticeJetpack(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

@@ -126,6 +126,9 @@ CGameContext::CGameContext(bool Resetting) :
 	std::fill(std::begin(m_aHoNinjaControllerOldWeapon), std::end(m_aHoNinjaControllerOldWeapon), WEAPON_HAMMER);
 	std::fill(std::begin(m_aHoNinjaControllerTarget), std::end(m_aHoNinjaControllerTarget), -1);
 	std::fill(std::begin(m_aHoNinjaControllerHeldBy), std::end(m_aHoNinjaControllerHeldBy), -1);
+	mem_zero(&m_aaHoPortals, sizeof(m_aaHoPortals));
+	std::fill(std::begin(m_aHoLastPortalOwner), std::end(m_aHoLastPortalOwner), -1);
+	std::fill(std::begin(m_aHoLastPortalIndex), std::end(m_aHoLastPortalIndex), -1);
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -2352,6 +2355,7 @@ void CGameContext::OnClientDrop(int ClientId, const char *pReason)
 	if(CheckClientId(m_aHoNinjaControllerHeldBy[ClientId]))
 		m_aHoNinjaControllerTarget[m_aHoNinjaControllerHeldBy[ClientId]] = -1;
 	m_aHoNinjaControllerHeldBy[ClientId] = -1;
+	DeactivateHoPortals(ClientId);
 
 	AbortVoteKickOnDisconnect(ClientId);
 	m_pController->OnPlayerDisconnect(m_apPlayers[ClientId], pReason);
@@ -5024,6 +5028,8 @@ void CGameContext::RegisterDDRaceCommands()
 
 void CGameContext::RegisterChatCommands()
 {
+	Console()->Register("portal", "?i['1'|'2']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortal, this, "Set PORTAL mode and toggle it");
+	Console()->Register("portaltoggle", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortalToggle, this, "Toggle your portal gun on or off");
 	Console()->Register("credits", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConCredits, this, "Shows the credits of the DDNet mod");
 	Console()->Register("rules", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConRules, this, "Shows the server rules");
 	Console()->Register("emote", "?s[emote name] i[duration in seconds]", CFGFLAG_CHAT | CFGFLAG_SERVER, ConEyeEmote, this, "Sets your tee's eye emote");
@@ -5103,7 +5109,7 @@ void CGameContext::RegisterChatCommands()
 	Console()->Register("removeweapon", "i[weapon-id]", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeRemoveWeapon, this, "removes weapon with id i from you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("shotgun", "", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeShotgun, this, "Gives a shotgun to you");
 	Console()->Register("grenade", "", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeGrenade, this, "Gives a grenade launcher to you");
-	Console()->Register("laser", "", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeLaser, this, "Gives a laser to you");
+	Console()->Register("laser", "?i['0'|'1'|'2']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoLaserMode, this, "Show or set laser mode: CLASSIC (0), PORTAL 1 (1), PORTAL 2 (2)");
 	Console()->Register("rifle", "", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeLaser, this, "Gives a laser to you");
 	Console()->Register("jetpack", "", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeJetpack, this, "Gives jetpack to you");
 	Console()->Register("setjumps", "i[jumps]", CFGFLAG_CHAT | CMDFLAG_PRACTICE, ConPracticeSetJumps, this, "Gives you as many jumps as you specify");

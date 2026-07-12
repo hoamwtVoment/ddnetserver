@@ -47,6 +47,7 @@
 */
 
 class CCharacter;
+class CHoPortal;
 class IConfigManager;
 class CConfig;
 class CHeap;
@@ -171,6 +172,9 @@ private:
 	int m_aHoNinjaControllerOldWeapon[MAX_CLIENTS];
 	int m_aHoNinjaControllerTarget[MAX_CLIENTS];
 	int m_aHoNinjaControllerHeldBy[MAX_CLIENTS];
+	CHoPortal *m_aaHoPortals[MAX_CLIENTS][2];
+	int m_aHoLastPortalOwner[MAX_CLIENTS];
+	int m_aHoLastPortalIndex[MAX_CLIENTS];
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -291,6 +295,9 @@ public:
 	int HoControlledBy(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS ? m_aHoControlledBy[ClientId] : -1; }
 	bool IsHoNinjaController(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS && m_aHoNinjaController[ClientId]; }
 	bool FireHoNinjaController(CCharacter *pControllerChr, vec2 CursorPos);
+	bool TryCreateHoPortal(int Owner, vec2 CollisionPos, vec2 LaserDirection);
+	bool HandleHoPortals(CCharacter *pChr);
+	void DeactivateHoPortals(int ClientId);
 
 	// voting
 	void StartVote(const char *pDesc, const char *pCommand, const char *pReason, const char *pSixupDesc);
@@ -542,6 +549,9 @@ private:
 	static void ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoFlyMode(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoNinjaController(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoLaserMode(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoPortal(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);

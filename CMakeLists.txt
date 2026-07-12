@@ -2977,6 +2977,8 @@ if(SERVER)
     gamemodes/mod.h
     gameworld.cpp
     gameworld.h
+    hoam/portal.cpp
+    hoam/portal.h
     interactions.cpp
     interactions.h
     mutes.cpp

@@ -112,6 +112,8 @@ public:
 	bool m_HoFlyMode;
 	float m_HoFlySpeed;
 	vec2 m_HoFlyRemainder;
+	int m_HoLaserMode;
+	int m_HoLastPortalMode;
 
 	// network latency calculations
 	struct

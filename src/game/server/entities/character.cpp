@@ -147,6 +147,7 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 
 void CCharacter::Destroy()
 {
+	GameServer()->DeactivateHoPortals(m_pPlayer->GetCid());
 	GameServer()->m_World.m_Core.m_apCharacters[m_pPlayer->GetCid()] = nullptr;
 	m_Alive = false;
 	SetSolo(false);
@@ -935,6 +936,7 @@ void CCharacter::TickDeferred()
 	}
 	else
 	{
+		GameServer()->HandleHoPortals(this);
 		m_Core.Move();
 	}
 	bool StuckAfterMove = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
@@ -1076,6 +1078,7 @@ void CCharacter::StopRecording()
 
 void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 {
+	GameServer()->DeactivateHoPortals(m_pPlayer->GetCid());
 	if(Killer != WEAPON_GAME && m_SetSavePos[RESCUEMODE_AUTO])
 		GetPlayer()->m_LastDeath = m_RescueTee[RESCUEMODE_AUTO];
 	StopRecording();

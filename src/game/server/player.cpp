@@ -91,6 +91,8 @@ void CPlayer::Reset()
 	m_HoFlyMode = false;
 	m_HoFlySpeed = 600.0f;
 	m_HoFlyRemainder = vec2(0, 0);
+	m_HoLaserMode = 0;
+	m_HoLastPortalMode = 1;
 
 	m_SendVoteIndex = -1;
 
