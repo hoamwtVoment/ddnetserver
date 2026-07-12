@@ -13,23 +13,23 @@
 
 namespace
 {
-constexpr float PORTAL_HALF_LENGTH = 48.0f;
-constexpr float PORTAL_ENTRY_HALF_LENGTH = 34.0f;
-// CCharacterCore::PhysicalSizeVec2() has a 28 px half-size. Keep the center
-// one extra pixel away from the surface so MoveBox cannot resolve it as stuck.
-constexpr float PORTAL_TEE_DISTANCE = 29.0f;
+	constexpr float PORTAL_HALF_LENGTH = 48.0f;
+	constexpr float PORTAL_ENTRY_HALF_LENGTH = 34.0f;
+	// CCharacterCore::PhysicalSizeVec2() has a 28 px half-size. Keep the center
+	// one extra pixel away from the surface so MoveBox cannot resolve it as stuck.
+	constexpr float PORTAL_TEE_DISTANCE = 29.0f;
 
-vec2 PortalNormal(int Direction)
-{
-	switch(Direction)
+	vec2 PortalNormal(int Direction)
 	{
-	case HO_PORTAL_LEFT: return vec2(-1.0f, 0.0f);
-	case HO_PORTAL_UP: return vec2(0.0f, -1.0f);
-	case HO_PORTAL_RIGHT: return vec2(1.0f, 0.0f);
-	case HO_PORTAL_DOWN: return vec2(0.0f, 1.0f);
-	default: return vec2(0.0f, 0.0f);
+		switch(Direction)
+		{
+		case HO_PORTAL_LEFT: return vec2(-1.0f, 0.0f);
+		case HO_PORTAL_UP: return vec2(0.0f, -1.0f);
+		case HO_PORTAL_RIGHT: return vec2(1.0f, 0.0f);
+		case HO_PORTAL_DOWN: return vec2(0.0f, 1.0f);
+		default: return vec2(0.0f, 0.0f);
+		}
 	}
-}
 }
 
 CHoPortal::CHoPortal(CGameWorld *pGameWorld, int Owner, int PortalIndex) :
@@ -257,6 +257,9 @@ bool CGameContext::HandleHoPortals(CCharacter *pChr)
 			const float NormalVelocity = dot(Vel, EntranceNormal);
 			pChr->SetPosition(ExitPos);
 			pChr->SetRawVelocity(ExitTangent * TangentVelocity - ExitNormal * NormalVelocity);
+			// Anti-skip tile handling must only inspect the actual movement after
+			// the exit, not the non-physical line between both portals.
+			pChr->m_PrevPos = ExitPos;
 			m_aHoLastPortalOwner[ClientId] = Owner;
 			m_aHoLastPortalIndex[ClientId] = 1 - EntranceIndex;
 			return true;

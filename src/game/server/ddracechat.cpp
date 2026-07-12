@@ -2165,7 +2165,7 @@ void CGameContext::ConHoLaserMode(IConsole::IResult *pResult, void *pUserData)
 	const char *pMode = pPlayer->m_HoLaserMode == 0 ? "CLASSIC" : (pPlayer->m_HoLaserMode == 1 ? "PORTAL 1" : "PORTAL 2");
 	char aBuf[64];
 	str_format(aBuf, sizeof(aBuf), "Laser mode: %s", pMode);
-	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+	pSelf->SendChatTarget(ClientId, aBuf);
 }
 
 void CGameContext::ConHoPortal(IConsole::IResult *pResult, void *pUserData)
@@ -2191,7 +2191,7 @@ void CGameContext::ConHoPortal(IConsole::IResult *pResult, void *pUserData)
 	pPlayer->m_HoLastPortalMode = pPlayer->m_HoLaserMode;
 	char aBuf[64];
 	str_format(aBuf, sizeof(aBuf), "Laser mode: PORTAL %d", pPlayer->m_HoLaserMode);
-	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+	pSelf->SendChatTarget(ClientId, aBuf);
 }
 
 void CGameContext::ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData)
@@ -2217,7 +2217,7 @@ void CGameContext::ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData
 		str_copy(aBuf, "Portal gun: off (CLASSIC)");
 	else
 		str_format(aBuf, sizeof(aBuf), "Portal gun: on (PORTAL %d)", pPlayer->m_HoLaserMode);
-	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "portal", aBuf);
+	pSelf->SendChatTarget(ClientId, aBuf);
 }
 
 void CGameContext::ConPracticeJetpack(IConsole::IResult *pResult, void *pUserData)
