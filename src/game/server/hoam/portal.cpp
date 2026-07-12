@@ -92,19 +92,22 @@ bool CHoPortal::IsIn(vec2 Pos, float *pTangentOffset) const
 	return true;
 }
 
-bool CHoPortal::IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const
+bool CHoPortal::IntersectEntry(vec2 Pos, vec2 Move, float *pTangentOffset, float *pEntryTime) const
 {
 	if(IsIn(Pos, pTangentOffset))
+	{
+		*pEntryTime = 0.0f;
 		return true;
-	if(!m_Active || length(Vel) == 0.0f)
+	}
+	if(!m_Active || length(Move) == 0.0f)
 		return false;
 
 	const vec2 N = Normal();
 	const vec2 T = Tangent();
 	const float StartNormal = dot(Pos - m_Pos, N);
 	const float StartTangent = dot(Pos - m_Pos, T);
-	const float DeltaNormal = dot(Vel, N);
-	const float DeltaTangent = dot(Vel, T);
+	const float DeltaNormal = dot(Move, N);
+	const float DeltaTangent = dot(Move, T);
 	float EnterTime = 0.0f;
 	float ExitTime = 1.0f;
 
@@ -130,8 +133,9 @@ bool CHoPortal::IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const
 		EnterTime < 0.0f || EnterTime > 1.0f)
 		return false;
 
-	const vec2 EntryPos = Pos + Vel * std::min(EnterTime + 0.0001f, 1.0f);
+	const vec2 EntryPos = Pos + Move * std::min(EnterTime + 0.0001f, 1.0f);
 	*pTangentOffset = std::clamp(dot(EntryPos - m_Pos, T), -PORTAL_ENTRY_HALF_LENGTH + 0.001f, PORTAL_ENTRY_HALF_LENGTH - 0.001f);
+	*pEntryTime = EnterTime;
 	return true;
 }
 
@@ -265,74 +269,145 @@ bool CGameContext::HandleHoPortals(CCharacter *pChr)
 	if(!pChr || !pChr->IsAlive())
 		return false;
 	const int ClientId = pChr->GetPlayer()->GetCid();
-	const vec2 Pos = pChr->Core()->m_Pos;
-	const vec2 Vel = pChr->Core()->m_Vel;
-
-	for(int Owner = 0; Owner < MAX_CLIENTS; ++Owner)
-	{
-		CHoPortal *pFirst = m_aaHoPortals[Owner][0];
-		CHoPortal *pSecond = m_aaHoPortals[Owner][1];
-		if(!pFirst || !pSecond || !pFirst->Active() || !pSecond->Active())
-			continue;
-		CCharacter *pOwnerChr = GetPlayerChar(Owner);
-		if(!pOwnerChr || pOwnerChr->Team() != pChr->Team())
-			continue;
-
-		for(int EntranceIndex = 0; EntranceIndex < 2; ++EntranceIndex)
-		{
-			CHoPortal *pEntrance = m_aaHoPortals[Owner][EntranceIndex];
-			CHoPortal *pExit = m_aaHoPortals[Owner][1 - EntranceIndex];
-			if(m_aHoLastPortalOwner[ClientId] == Owner && m_aHoLastPortalIndex[ClientId] == EntranceIndex)
-				continue;
-
-			float TangentOffset;
-			if(!pEntrance->IntersectEntry(Pos, Vel, &TangentOffset))
-				continue;
-
-			const vec2 ExitNormal = pExit->Normal();
-			const vec2 ExitTangent = pExit->Tangent();
-			vec2 ExitPos;
-			bool FoundExit = false;
-			for(float Distance = PORTAL_TEE_DISTANCE; Distance <= 64.0f && !FoundExit; Distance += 1.0f)
-			{
-				for(float OffsetAdjustment : {0.0f, -4.0f, 4.0f, -8.0f, 8.0f, -16.0f, 16.0f})
-				{
-					const float ExitOffset = std::clamp(TangentOffset + OffsetAdjustment, -PORTAL_ENTRY_HALF_LENGTH + 1.0f, PORTAL_ENTRY_HALF_LENGTH - 1.0f);
-					const vec2 Candidate = pExit->Center() + ExitNormal * Distance + ExitTangent * ExitOffset;
-					if(!Collision()->TestBox(Candidate, CCharacterCore::PhysicalSizeVec2()))
-					{
-						ExitPos = Candidate;
-						FoundExit = true;
-						break;
-					}
-				}
-			}
-			if(!FoundExit)
-				return false;
-
-			const vec2 EntranceNormal = pEntrance->Normal();
-			const vec2 EntranceTangent = pEntrance->Tangent();
-			const float TangentVelocity = dot(Vel, EntranceTangent);
-			const float NormalVelocity = dot(Vel, EntranceNormal);
-			pChr->SetPosition(ExitPos);
-			pChr->SetRawVelocity(ExitTangent * TangentVelocity - ExitNormal * NormalVelocity);
-			// Anti-skip tile handling must only inspect the actual movement after
-			// the exit, not the non-physical line between both portals.
-			pChr->m_PrevPos = ExitPos;
-			m_aHoLastPortalOwner[ClientId] = Owner;
-			m_aHoLastPortalIndex[ClientId] = 1 - EntranceIndex;
-			return true;
-		}
-	}
-
-	if(CheckClientId(ClientId) && m_aHoLastPortalOwner[ClientId] >= 0)
+	if(m_aHoLastPortalOwner[ClientId] >= 0)
 	{
 		CHoPortal *pLast = m_aaHoPortals[m_aHoLastPortalOwner[ClientId]][m_aHoLastPortalIndex[ClientId]];
-		if(!pLast || !pLast->IsIn(Pos))
+		if(!pLast || !pLast->IsIn(pChr->Core()->m_Pos))
 		{
 			m_aHoLastPortalOwner[ClientId] = -1;
 			m_aHoLastPortalIndex[ClientId] = -1;
 		}
 	}
-	return false;
+
+	vec2 Pos = pChr->Core()->m_Pos;
+	vec2 Vel = pChr->Core()->m_Vel;
+	float RemainingTime = 1.0f;
+	bool Teleported = false;
+
+	constexpr int MAX_PORTAL_TRANSITIONS_PER_TICK = 128;
+	for(int Transition = 0; Transition < MAX_PORTAL_TRANSITIONS_PER_TICK; ++Transition)
+	{
+		vec2 MoveVelocity = Vel;
+		if(m_World.m_Core.m_HoSpeedLimit)
+		{
+			const CTuningParams *pTuning = pChr->GetTuning(pChr->m_TuneZone);
+			MoveVelocity.x *= VelocityRamp(length(Vel) * 50.0f, pTuning->m_VelrampStart, pTuning->m_VelrampRange, pTuning->m_VelrampCurvature);
+		}
+		const vec2 Move = MoveVelocity * RemainingTime;
+
+		CHoPortal *pBestEntrance = nullptr;
+		CHoPortal *pBestExit = nullptr;
+		int BestOwner = -1;
+		int BestEntranceIndex = -1;
+		float BestTangentOffset = 0.0f;
+		float BestEntryTime = 2.0f;
+
+		for(int Owner = 0; Owner < MAX_CLIENTS; ++Owner)
+		{
+			CHoPortal *pFirst = m_aaHoPortals[Owner][0];
+			CHoPortal *pSecond = m_aaHoPortals[Owner][1];
+			if(!pFirst || !pSecond || !pFirst->Active() || !pSecond->Active())
+				continue;
+			CCharacter *pOwnerChr = GetPlayerChar(Owner);
+			if(!pOwnerChr || pOwnerChr->Team() != pChr->Team())
+				continue;
+
+			for(int EntranceIndex = 0; EntranceIndex < 2; ++EntranceIndex)
+			{
+				if(m_aHoLastPortalOwner[ClientId] == Owner && m_aHoLastPortalIndex[ClientId] == EntranceIndex)
+					continue;
+				float TangentOffset;
+				float EntryTime;
+				if(!m_aaHoPortals[Owner][EntranceIndex]->IntersectEntry(Pos, Move, &TangentOffset, &EntryTime) || EntryTime >= BestEntryTime)
+					continue;
+				pBestEntrance = m_aaHoPortals[Owner][EntranceIndex];
+				pBestExit = m_aaHoPortals[Owner][1 - EntranceIndex];
+				BestOwner = Owner;
+				BestEntranceIndex = EntranceIndex;
+				BestTangentOffset = TangentOffset;
+				BestEntryTime = EntryTime;
+			}
+		}
+
+		if(!pBestEntrance)
+		{
+			if(!Teleported)
+				return false;
+
+			vec2 MoveAfterPortals = Move;
+			const vec2 MoveBeforeCollision = MoveAfterPortals;
+			bool Grounded = false;
+			const CTuningParams *pTuning = pChr->GetTuning(pChr->m_TuneZone);
+			Collision()->MoveBox(&Pos, &MoveAfterPortals, CCharacterCore::PhysicalSizeVec2(),
+				vec2(pTuning->m_GroundElasticityX, pTuning->m_GroundElasticityY), &Grounded);
+			CCharacterCore Core = pChr->GetCore();
+			if(Grounded)
+			{
+				Core.m_Jumped &= ~2;
+				Core.m_JumpedTotal = 0;
+			}
+			Core.m_Colliding = 0;
+			if(MoveAfterPortals.x < 0.001f && MoveAfterPortals.x > -0.001f)
+			{
+				if(MoveBeforeCollision.x > 0.0f)
+					Core.m_Colliding = 1;
+				else if(MoveBeforeCollision.x < 0.0f)
+					Core.m_Colliding = 2;
+			}
+			else
+				Core.m_LeftWall = true;
+			pChr->SetCore(Core);
+			if(absolute(MoveBeforeCollision.x) > 0.000001f)
+				Vel.x *= MoveAfterPortals.x / MoveBeforeCollision.x;
+			if(absolute(MoveBeforeCollision.y) > 0.000001f)
+				Vel.y *= MoveAfterPortals.y / MoveBeforeCollision.y;
+			pChr->SetPosition(Pos);
+			pChr->SetRawVelocity(Vel);
+			return true;
+		}
+
+		Pos += Move * BestEntryTime;
+		RemainingTime *= 1.0f - BestEntryTime;
+		const vec2 ExitNormal = pBestExit->Normal();
+		const vec2 ExitTangent = pBestExit->Tangent();
+		vec2 ExitPos;
+		bool FoundExit = false;
+		for(float Distance = PORTAL_TEE_DISTANCE; Distance <= 64.0f && !FoundExit; Distance += 1.0f)
+		{
+			for(float OffsetAdjustment : {0.0f, -4.0f, 4.0f, -8.0f, 8.0f, -16.0f, 16.0f})
+			{
+				const float ExitOffset = std::clamp(BestTangentOffset + OffsetAdjustment, -PORTAL_ENTRY_HALF_LENGTH + 1.0f, PORTAL_ENTRY_HALF_LENGTH - 1.0f);
+				const vec2 Candidate = pBestExit->Center() + ExitNormal * Distance + ExitTangent * ExitOffset;
+				if(!Collision()->TestBox(Candidate, CCharacterCore::PhysicalSizeVec2()))
+				{
+					ExitPos = Candidate;
+					FoundExit = true;
+					break;
+				}
+			}
+		}
+		if(!FoundExit)
+			break;
+
+		const vec2 EntranceNormal = pBestEntrance->Normal();
+		const vec2 EntranceTangent = pBestEntrance->Tangent();
+		const float TangentVelocity = dot(Vel, EntranceTangent);
+		const float NormalVelocity = dot(Vel, EntranceNormal);
+		Vel = ExitTangent * TangentVelocity - ExitNormal * NormalVelocity;
+		Pos = ExitPos;
+		pChr->m_PrevPos = ExitPos;
+		m_aHoLastPortalOwner[ClientId] = BestOwner;
+		m_aHoLastPortalIndex[ClientId] = 1 - BestEntranceIndex;
+		Teleported = true;
+
+		if(RemainingTime <= 0.000001f)
+			break;
+	}
+
+	if(Teleported)
+	{
+		pChr->SetPosition(Pos);
+		pChr->SetRawVelocity(Vel);
+	}
+	return Teleported;
 }

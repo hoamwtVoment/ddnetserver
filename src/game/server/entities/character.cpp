@@ -936,8 +936,8 @@ void CCharacter::TickDeferred()
 	}
 	else
 	{
-		GameServer()->HandleHoPortals(this);
-		m_Core.Move();
+		if(!GameServer()->HandleHoPortals(this))
+			m_Core.Move();
 	}
 	bool StuckAfterMove = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 	if(!m_pPlayer->m_HoFlyMode)
