@@ -832,6 +832,7 @@ void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserD
 	pChr->SetWeaponAmmo(WEAPON_NINJA, -1);
 	pChr->SetNinjaActivationTick(pSelf->Server()->Tick());
 	pChr->SetNinjaCurrentMoveTime(0);
+	pChr->SetWeapon(WEAPON_NINJA);
 
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller enabled for client %d", ClientId);

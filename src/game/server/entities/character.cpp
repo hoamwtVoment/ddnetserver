@@ -1404,7 +1404,7 @@ void CCharacter::Snap(int SnappingClient)
 		DDNetCharacter.m_Flags |= CHARACTERFLAG_WEAPON_GRENADE;
 	if(m_Core.m_aWeapons[WEAPON_LASER].m_Got)
 		DDNetCharacter.m_Flags |= CHARACTERFLAG_WEAPON_LASER;
-	if(m_Core.m_ActiveWeapon == WEAPON_NINJA)
+	if(m_Core.m_ActiveWeapon == WEAPON_NINJA || GameServer()->IsHoNinjaController(m_pPlayer->GetCid()))
 		DDNetCharacter.m_Flags |= CHARACTERFLAG_WEAPON_NINJA;
 	if(m_Core.m_LiveFrozen)
 		DDNetCharacter.m_Flags |= CHARACTERFLAG_MOVEMENTS_DISABLED;
