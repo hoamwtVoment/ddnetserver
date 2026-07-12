@@ -790,6 +790,55 @@ void CGameContext::ConHoFlyMode(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_flymode", aBuf);
 }
 
+void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const bool FromServerConsole = pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED;
+	if(FromServerConsole && pResult->NumArguments() == 0)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", "server console usage: ho_ninjacontroller [id]");
+		return;
+	}
+
+	const int ClientId = pResult->NumArguments() > 0 ? pResult->GetInteger(0) : pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", "invalid client id");
+		return;
+	}
+
+	CCharacter *pChr = pSelf->GetPlayerChar(ClientId);
+	if(!pChr)
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", "player has no active character");
+		return;
+	}
+
+	if(pSelf->m_aHoNinjaController[ClientId])
+	{
+		pSelf->DisableHoNinjaController(ClientId, true);
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller disabled for client %d", ClientId);
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", aBuf);
+		pSelf->SendChatTarget(ClientId, "ho_ninjacontroller disabled");
+		return;
+	}
+
+	pSelf->m_aHoNinjaController[ClientId] = true;
+	pSelf->m_aHoNinjaControllerHadNinja[ClientId] = pChr->GetWeaponGot(WEAPON_NINJA);
+	pSelf->m_aHoNinjaControllerOldWeapon[ClientId] = pChr->GetActiveWeapon();
+	pSelf->m_aHoNinjaControllerTarget[ClientId] = -1;
+	pChr->SetWeaponGot(WEAPON_NINJA, true);
+	pChr->SetWeaponAmmo(WEAPON_NINJA, -1);
+	pChr->SetNinjaActivationTick(pSelf->Server()->Tick());
+	pChr->SetNinjaCurrentMoveTime(0);
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller enabled for client %d", ClientId);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", aBuf);
+	pSelf->SendChatTarget(ClientId, "ho_ninjacontroller enabled: select ninja and left click a player, click again to release");
+}
+
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

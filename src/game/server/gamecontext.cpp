@@ -121,6 +121,11 @@ CGameContext::CGameContext(bool Resetting) :
 	std::fill(std::begin(m_aHoControlInputInitialized), std::end(m_aHoControlInputInitialized), false);
 	mem_zero(&m_aHoControlLastRawInput, sizeof(m_aHoControlLastRawInput));
 	mem_zero(&m_aHoControlLastAppliedInput, sizeof(m_aHoControlLastAppliedInput));
+	std::fill(std::begin(m_aHoNinjaController), std::end(m_aHoNinjaController), false);
+	std::fill(std::begin(m_aHoNinjaControllerHadNinja), std::end(m_aHoNinjaControllerHadNinja), false);
+	std::fill(std::begin(m_aHoNinjaControllerOldWeapon), std::end(m_aHoNinjaControllerOldWeapon), WEAPON_HAMMER);
+	std::fill(std::begin(m_aHoNinjaControllerTarget), std::end(m_aHoNinjaControllerTarget), -1);
+	std::fill(std::begin(m_aHoNinjaControllerHeldBy), std::end(m_aHoNinjaControllerHeldBy), -1);
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -1302,6 +1307,148 @@ CNetObj_PlayerInput CGameContext::HoControlInput(int ControllerId, int TargetId,
 	return Applied;
 }
 
+void CGameContext::DisableHoNinjaController(int ClientId, bool RestoreWeapon)
+{
+	if(!CheckClientId(ClientId))
+		return;
+
+	const int TargetId = m_aHoNinjaControllerTarget[ClientId];
+	if(CheckClientId(TargetId) && m_aHoNinjaControllerHeldBy[TargetId] == ClientId)
+		m_aHoNinjaControllerHeldBy[TargetId] = -1;
+	m_aHoNinjaControllerTarget[ClientId] = -1;
+
+	CCharacter *pChr = GetPlayerChar(ClientId);
+	if(RestoreWeapon && pChr)
+	{
+		const bool HadNinja = m_aHoNinjaControllerHadNinja[ClientId];
+		const int OldWeapon = m_aHoNinjaControllerOldWeapon[ClientId];
+		if(!HadNinja)
+		{
+			pChr->SetWeaponGot(WEAPON_NINJA, false);
+			pChr->SetWeaponAmmo(WEAPON_NINJA, 0);
+		}
+
+		if(pChr->GetActiveWeapon() == WEAPON_NINJA && (!HadNinja || !pChr->GetWeaponGot(WEAPON_NINJA)))
+		{
+			int Restore = WEAPON_HAMMER;
+			if(OldWeapon >= 0 && OldWeapon < NUM_WEAPONS && pChr->GetWeaponGot(OldWeapon))
+				Restore = OldWeapon;
+			pChr->SetWeapon(Restore);
+		}
+	}
+
+	m_aHoNinjaController[ClientId] = false;
+	m_aHoNinjaControllerHadNinja[ClientId] = false;
+	m_aHoNinjaControllerOldWeapon[ClientId] = WEAPON_HAMMER;
+}
+
+bool CGameContext::FireHoNinjaController(CCharacter *pControllerChr, vec2 CursorPos)
+{
+	if(!pControllerChr)
+		return false;
+
+	const int ControllerId = pControllerChr->GetPlayer()->GetCid();
+	if(!IsHoNinjaController(ControllerId))
+		return false;
+
+	const int OldTargetId = m_aHoNinjaControllerTarget[ControllerId];
+	if(CheckClientId(OldTargetId))
+	{
+		if(m_aHoNinjaControllerHeldBy[OldTargetId] == ControllerId)
+			m_aHoNinjaControllerHeldBy[OldTargetId] = -1;
+		m_aHoNinjaControllerTarget[ControllerId] = -1;
+		SendChatTarget(ControllerId, "ho_ninjacontroller released target");
+		return true;
+	}
+
+	CEntity *apEnts[MAX_CLIENTS];
+	const float Radius = CCharacterCore::PhysicalSize() * 1.35f;
+	const int Num = m_World.FindEntities(CursorPos, Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
+	CCharacter *pBest = nullptr;
+	float BestDistance = Radius + 1.0f;
+	for(int i = 0; i < Num; ++i)
+	{
+		auto *pTarget = static_cast<CCharacter *>(apEnts[i]);
+		if(!pTarget || pTarget == pControllerChr || !pTarget->GetPlayer())
+			continue;
+		const int TargetId = pTarget->GetPlayer()->GetCid();
+		if(TargetId == ControllerId)
+			continue;
+		const float Distance = distance(pTarget->GetPos(), CursorPos);
+		if(Distance < BestDistance)
+		{
+			BestDistance = Distance;
+			pBest = pTarget;
+		}
+	}
+
+	if(!pBest)
+	{
+		SendChatTarget(ControllerId, "ho_ninjacontroller: no player at cursor");
+		return true;
+	}
+
+	const int TargetId = pBest->GetPlayer()->GetCid();
+	const int OldHolder = m_aHoNinjaControllerHeldBy[TargetId];
+	if(CheckClientId(OldHolder) && OldHolder != ControllerId)
+	{
+		m_aHoNinjaControllerTarget[OldHolder] = -1;
+		SendChatTarget(OldHolder, "ho_ninjacontroller target was taken");
+	}
+
+	m_aHoNinjaControllerTarget[ControllerId] = TargetId;
+	m_aHoNinjaControllerHeldBy[TargetId] = ControllerId;
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller grabbed %s", Server()->ClientName(TargetId));
+	SendChatTarget(ControllerId, aBuf);
+	return true;
+}
+
+void CGameContext::UpdateHoNinjaControllers()
+{
+	for(int ControllerId = 0; ControllerId < MAX_CLIENTS; ++ControllerId)
+	{
+		if(!m_aHoNinjaController[ControllerId])
+			continue;
+
+		CCharacter *pControllerChr = GetPlayerChar(ControllerId);
+		if(!pControllerChr)
+		{
+			const int TargetId = m_aHoNinjaControllerTarget[ControllerId];
+			if(CheckClientId(TargetId) && m_aHoNinjaControllerHeldBy[TargetId] == ControllerId)
+				m_aHoNinjaControllerHeldBy[TargetId] = -1;
+			m_aHoNinjaControllerTarget[ControllerId] = -1;
+			continue;
+		}
+
+		pControllerChr->SetWeaponGot(WEAPON_NINJA, true);
+		pControllerChr->SetWeaponAmmo(WEAPON_NINJA, -1);
+		pControllerChr->SetNinjaActivationTick(Server()->Tick());
+		pControllerChr->SetNinjaCurrentMoveTime(0);
+
+		const int TargetId = m_aHoNinjaControllerTarget[ControllerId];
+		if(!CheckClientId(TargetId))
+			continue;
+
+		CCharacter *pTargetChr = GetPlayerChar(TargetId);
+		if(!pTargetChr)
+		{
+			m_aHoNinjaControllerTarget[ControllerId] = -1;
+			if(CheckClientId(TargetId) && m_aHoNinjaControllerHeldBy[TargetId] == ControllerId)
+				m_aHoNinjaControllerHeldBy[TargetId] = -1;
+			continue;
+		}
+
+		CPlayer *pController = m_apPlayers[ControllerId];
+		const vec2 Target = vec2(pControllerChr->Core()->m_Input.m_TargetX, pControllerChr->Core()->m_Input.m_TargetY);
+		vec2 HoldPos = pController ? pController->m_CameraInfo.ConvertTargetToWorld(pControllerChr->GetPos(), Target) : pControllerChr->GetPos() + Target;
+		pTargetChr->SetPosition(HoldPos);
+		pTargetChr->m_Pos = HoldPos;
+		pTargetChr->m_PrevPos = HoldPos;
+		pTargetChr->SetVelocity(vec2(0, 0));
+	}
+}
+
 void CGameContext::OnTick()
 {
 	if(m_TeeHistorianActive)
@@ -1390,6 +1537,8 @@ void CGameContext::OnTick()
 			if(pPlayer)
 				pPlayer->PostPostTick();
 		}
+
+		UpdateHoNinjaControllers();
 	}
 
 	if(m_HoTickFrozen)
@@ -2199,6 +2348,10 @@ void CGameContext::OnClientDrop(int ClientId, const char *pReason)
 		StopHoControl(m_aHoControlledBy[ClientId], false);
 	m_aHoControlTarget[ClientId] = -1;
 	m_aHoControlledBy[ClientId] = -1;
+	DisableHoNinjaController(ClientId, false);
+	if(CheckClientId(m_aHoNinjaControllerHeldBy[ClientId]))
+		m_aHoNinjaControllerTarget[m_aHoNinjaControllerHeldBy[ClientId]] = -1;
+	m_aHoNinjaControllerHeldBy[ClientId] = -1;
 
 	AbortVoteKickOnDisconnect(ClientId);
 	m_pController->OnPlayerDisconnect(m_apPlayers[ClientId], pReason);
@@ -4798,6 +4951,7 @@ void CGameContext::RegisterDDRaceCommands()
 	Console()->Register("ho_racetime", "i[id] ?i[ticks]", CFGFLAG_SERVER, ConHoRaceTime, this, "Show or set a player's race time in ticks");
 	Console()->Register("ho_fakedeath", "i[id] ?i[killer] ?i[weapon]", CFGFLAG_SERVER, ConHoFakeDeath, this, "Send fake death without killing. weapon: game=-3 self=-2 world=-1 hammer=0 gun=1 shotgun=2 grenade=3 laser=4 ninja=5");
 	Console()->Register("ho_flymode", "?f[speed]", CFGFLAG_SERVER, ConHoFlyMode, this, "Toggle fly mode for yourself. speed is pixels per second; left/right move, jump moves up, hook moves down");
+	Console()->Register("ho_ninjacontroller", "?i[id]", CFGFLAG_SERVER, ConHoNinjaController, this, "Toggle gravity-gun ninja for player. Select ninja, left click a player to hold at cursor, click again to release");
 	Console()->Register("addweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConAddWeapon, this, "Gives weapon with id i to you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("removeweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConRemoveWeapon, this, "removes weapon with id i from you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("shotgun", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConShotgun, this, "Gives a shotgun to you");

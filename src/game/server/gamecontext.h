@@ -166,6 +166,11 @@ private:
 	bool m_aHoControlInputInitialized[MAX_CLIENTS];
 	CNetObj_PlayerInput m_aHoControlLastRawInput[MAX_CLIENTS];
 	CNetObj_PlayerInput m_aHoControlLastAppliedInput[MAX_CLIENTS];
+	bool m_aHoNinjaController[MAX_CLIENTS];
+	bool m_aHoNinjaControllerHadNinja[MAX_CLIENTS];
+	int m_aHoNinjaControllerOldWeapon[MAX_CLIENTS];
+	int m_aHoNinjaControllerTarget[MAX_CLIENTS];
+	int m_aHoNinjaControllerHeldBy[MAX_CLIENTS];
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -284,6 +289,8 @@ public:
 	bool HoTileEnabled(EHoTile Tile) const { return m_aHoTileEnabled[Tile]; }
 	int HoControlTarget(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS ? m_aHoControlTarget[ClientId] : -1; }
 	int HoControlledBy(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS ? m_aHoControlledBy[ClientId] : -1; }
+	bool IsHoNinjaController(int ClientId) const { return ClientId >= 0 && ClientId < MAX_CLIENTS && m_aHoNinjaController[ClientId]; }
+	bool FireHoNinjaController(CCharacter *pControllerChr, vec2 CursorPos);
 
 	// voting
 	void StartVote(const char *pDesc, const char *pCommand, const char *pReason, const char *pSixupDesc);
@@ -389,6 +396,8 @@ public:
 	bool StartHoControl(int ControllerId, int TargetId);
 	void StopHoControl(int ControllerId, bool Chat);
 	CNetObj_PlayerInput HoControlInput(int ControllerId, int TargetId, const CNetObj_PlayerInput *pInput);
+	void UpdateHoNinjaControllers();
+	void DisableHoNinjaController(int ClientId, bool RestoreWeapon);
 
 	void *PreProcessMsg(int *pMsgId, CUnpacker *pUnpacker, int ClientId);
 	void CensorMessage(char *pCensoredMessage, const char *pMessage, int Size);
@@ -532,6 +541,7 @@ private:
 	static void ConHoRaceTime(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoFlyMode(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoNinjaController(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);

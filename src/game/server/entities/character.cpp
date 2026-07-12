@@ -298,6 +298,8 @@ void CCharacter::HandleNinja()
 {
 	if(m_Core.m_ActiveWeapon != WEAPON_NINJA)
 		return;
+	if(GameServer()->IsHoNinjaController(m_pPlayer->GetCid()))
+		return;
 
 	if((Server()->Tick() - m_Core.m_Ninja.m_ActivationTick) > (g_pData->m_Weapons.m_Ninja.m_Duration * Server()->TickSpeed() / 1000))
 	{
@@ -399,7 +401,7 @@ void CCharacter::DoWeaponSwitch()
 	// make sure we can switch
 	if(m_ReloadTimer != 0 || m_QueuedWeapon == -1)
 		return;
-	if(m_Core.m_aWeapons[WEAPON_NINJA].m_Got || !m_Core.m_aWeapons[m_QueuedWeapon].m_Got)
+	if((m_Core.m_aWeapons[WEAPON_NINJA].m_Got && !GameServer()->IsHoNinjaController(m_pPlayer->GetCid())) || !m_Core.m_aWeapons[m_QueuedWeapon].m_Got)
 		return;
 
 	// switch Weapon
@@ -633,6 +635,9 @@ void CCharacter::FireWeapon()
 
 	case WEAPON_NINJA:
 	{
+		if(GameServer()->FireHoNinjaController(this, m_pPlayer->m_CameraInfo.ConvertTargetToWorld(m_Pos, MouseTarget)))
+			break;
+
 		// reset Hit objects
 		m_NumObjectsHit = 0;
 
