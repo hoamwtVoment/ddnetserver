@@ -31,6 +31,7 @@ public:
 	vec2 Normal() const;
 	vec2 Tangent() const;
 	bool IsIn(vec2 Pos, float *pTangentOffset = nullptr) const;
+	bool IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const;
 
 private:
 	int m_Owner;

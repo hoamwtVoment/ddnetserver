@@ -92,6 +92,49 @@ bool CHoPortal::IsIn(vec2 Pos, float *pTangentOffset) const
 	return true;
 }
 
+bool CHoPortal::IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const
+{
+	if(IsIn(Pos, pTangentOffset))
+		return true;
+	if(!m_Active || length(Vel) == 0.0f)
+		return false;
+
+	const vec2 N = Normal();
+	const vec2 T = Tangent();
+	const float StartNormal = dot(Pos - m_Pos, N);
+	const float StartTangent = dot(Pos - m_Pos, T);
+	const float DeltaNormal = dot(Vel, N);
+	const float DeltaTangent = dot(Vel, T);
+	float EnterTime = 0.0f;
+	float ExitTime = 1.0f;
+
+	const auto IntersectSlab = [&](float Start, float Delta, float Minimum, float Maximum) {
+		if(absolute(Delta) < 0.000001f)
+			return Start >= Minimum && Start <= Maximum;
+
+		float First = (Minimum - Start) / Delta;
+		float Last = (Maximum - Start) / Delta;
+		if(First > Last)
+		{
+			const float Temp = First;
+			First = Last;
+			Last = Temp;
+		}
+		EnterTime = std::max(EnterTime, First);
+		ExitTime = std::min(ExitTime, Last);
+		return EnterTime <= ExitTime;
+	};
+
+	if(!IntersectSlab(StartNormal, DeltaNormal, 0.0f, PORTAL_HALF_LENGTH) ||
+		!IntersectSlab(StartTangent, DeltaTangent, -PORTAL_ENTRY_HALF_LENGTH, PORTAL_ENTRY_HALF_LENGTH) ||
+		EnterTime < 0.0f || EnterTime > 1.0f)
+		return false;
+
+	const vec2 EntryPos = Pos + Vel * std::min(EnterTime + 0.0001f, 1.0f);
+	*pTangentOffset = std::clamp(dot(EntryPos - m_Pos, T), -PORTAL_ENTRY_HALF_LENGTH + 0.001f, PORTAL_ENTRY_HALF_LENGTH - 0.001f);
+	return true;
+}
+
 void CHoPortal::Snap(int SnappingClient)
 {
 	if(!m_Active || !GetId().has_value() || NetworkClippedLine(SnappingClient, m_From, m_To))
@@ -243,7 +286,7 @@ bool CGameContext::HandleHoPortals(CCharacter *pChr)
 				continue;
 
 			float TangentOffset;
-			if(!pEntrance->IsIn(Pos, &TangentOffset))
+			if(!pEntrance->IntersectEntry(Pos, Vel, &TangentOffset))
 				continue;
 
 			const vec2 ExitNormal = pExit->Normal();
