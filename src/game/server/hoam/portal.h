@@ -30,7 +30,7 @@ public:
 	vec2 Center() const { return m_Pos; }
 	vec2 Normal() const;
 	vec2 Tangent() const;
-	bool IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const;
+	bool IsIn(vec2 Pos, float *pTangentOffset = nullptr) const;
 
 private:
 	int m_Owner;

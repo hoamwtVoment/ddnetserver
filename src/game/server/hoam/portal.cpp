@@ -15,6 +15,8 @@ namespace
 {
 	constexpr float PORTAL_HALF_LENGTH = 48.0f;
 	constexpr float PORTAL_ENTRY_HALF_LENGTH = 34.0f;
+	constexpr int PPRACE_TILE_PORTALABLE = 0x90;
+	constexpr int PPRACE_TILE_PORTAL_ABSORB = 0x93;
 	// CCharacterCore::PhysicalSizeVec2() has a 28 px half-size. Keep the center
 	// one extra pixel away from the surface so MoveBox cannot resolve it as stuck.
 	constexpr float PORTAL_TEE_DISTANCE = 29.0f;
@@ -70,27 +72,23 @@ void CHoPortal::Place(vec2 SurfaceCenter, int Direction)
 	m_Active = true;
 }
 
-bool CHoPortal::IntersectEntry(vec2 Pos, vec2 Vel, float *pTangentOffset) const
+bool CHoPortal::IsIn(vec2 Pos, float *pTangentOffset) const
 {
-	if(!m_Active || length(Vel) == 0.0f)
+	if(!m_Active)
 		return false;
 
 	const vec2 N = Normal();
 	const vec2 T = Tangent();
-	const vec2 TriggerCenter = m_Pos + N * PORTAL_TEE_DISTANCE;
-	const float StartDistance = dot(Pos - TriggerCenter, N);
-	const float EndDistance = dot(Pos + Vel - TriggerCenter, N);
-	if(StartDistance < -0.5f || EndDistance > 0.5f || EndDistance >= StartDistance)
+	const float NormalDistance = dot(Pos - m_Pos, N);
+	if(NormalDistance < 0.0f || NormalDistance >= PORTAL_HALF_LENGTH)
 		return false;
 
-	const float Denominator = StartDistance - EndDistance;
-	const float Time = Denominator > 0.0f ? std::clamp(StartDistance / Denominator, 0.0f, 1.0f) : 0.0f;
-	const vec2 HitPos = Pos + Vel * Time;
-	const float TangentOffset = dot(HitPos - m_Pos, T);
+	const float TangentOffset = dot(Pos - m_Pos, T);
 	if(absolute(TangentOffset) >= PORTAL_ENTRY_HALF_LENGTH)
 		return false;
 
-	*pTangentOffset = TangentOffset;
+	if(pTangentOffset)
+		*pTangentOffset = TangentOffset;
 	return true;
 }
 
@@ -122,19 +120,34 @@ bool CGameContext::TryCreateHoPortal(int Owner, vec2 CollisionPos, vec2 LaserDir
 	if(!CheckClientId(Owner) || !m_apPlayers[Owner] || m_apPlayers[Owner]->m_HoLaserMode == 0)
 		return false;
 
+	const int Width = Collision()->GetWidth();
+	const int Height = Collision()->GetHeight();
+	const int HitIndex = Collision()->GetPureMapIndex(CollisionPos);
+	const int HitX = HitIndex % Width;
+	const int HitY = HitIndex / Width;
+	if(!m_HoSuperPortal)
+	{
+		const int FrontTile = Collision()->GetFrontTileIndex(HitIndex);
+		if(FrontTile == PPRACE_TILE_PORTAL_ABSORB)
+			return true;
+		if(FrontTile != PPRACE_TILE_PORTALABLE)
+			return false;
+	}
+	const vec2 HitTileCenter = Collision()->GetPos(HitIndex);
+	const vec2 Delta = HitTileCenter - CollisionPos;
+
 	int Direction;
-	if(absolute(LaserDirection.x) > absolute(LaserDirection.y))
+	if(absolute(Delta.x) < absolute(Delta.y))
+		Direction = Delta.y > 0.0f ? HO_PORTAL_UP : HO_PORTAL_DOWN;
+	else if(absolute(Delta.x) > 0.0f)
+		Direction = Delta.x > 0.0f ? HO_PORTAL_LEFT : HO_PORTAL_RIGHT;
+	else if(absolute(LaserDirection.x) > absolute(LaserDirection.y))
 		Direction = LaserDirection.x > 0.0f ? HO_PORTAL_LEFT : HO_PORTAL_RIGHT;
 	else
 		Direction = LaserDirection.y > 0.0f ? HO_PORTAL_UP : HO_PORTAL_DOWN;
 
 	const vec2 N = PortalNormal(Direction);
 	const vec2 T(-N.y, N.x);
-	const int Width = Collision()->GetWidth();
-	const int Height = Collision()->GetHeight();
-	const int HitIndex = Collision()->GetPureMapIndex(CollisionPos);
-	const int HitX = HitIndex % Width;
-	const int HitY = HitIndex / Width;
 
 	const auto IsValidCenter = [&](int CenterX, int CenterY) {
 		for(int Offset = -1; Offset <= 1; ++Offset)
@@ -145,7 +158,10 @@ bool CGameContext::TryCreateHoPortal(int Owner, vec2 CollisionPos, vec2 LaserDir
 			const int OutsideY = Y + round_to_int(N.y);
 			if(X < 0 || X >= Width || Y < 0 || Y >= Height || OutsideX < 0 || OutsideX >= Width || OutsideY < 0 || OutsideY >= Height)
 				return false;
-			if(!Collision()->CheckPoint(vec2(X * 32 + 16, Y * 32 + 16)) || Collision()->CheckPoint(vec2(OutsideX * 32 + 16, OutsideY * 32 + 16)))
+			const int Index = Y * Width + X;
+			if(!m_HoSuperPortal && Collision()->GetFrontTileIndex(Index) != PPRACE_TILE_PORTALABLE)
+				return false;
+			if((m_HoSuperPortal && !Collision()->CheckPoint(vec2(X * 32 + 16, Y * 32 + 16))) || Collision()->CheckPoint(vec2(OutsideX * 32 + 16, OutsideY * 32 + 16)))
 				return false;
 		}
 		return true;
@@ -227,7 +243,7 @@ bool CGameContext::HandleHoPortals(CCharacter *pChr)
 				continue;
 
 			float TangentOffset;
-			if(!pEntrance->IntersectEntry(Pos, Vel, &TangentOffset))
+			if(!pEntrance->IsIn(Pos, &TangentOffset))
 				continue;
 
 			const vec2 ExitNormal = pExit->Normal();
@@ -269,7 +285,7 @@ bool CGameContext::HandleHoPortals(CCharacter *pChr)
 	if(CheckClientId(ClientId) && m_aHoLastPortalOwner[ClientId] >= 0)
 	{
 		CHoPortal *pLast = m_aaHoPortals[m_aHoLastPortalOwner[ClientId]][m_aHoLastPortalIndex[ClientId]];
-		if(!pLast || distance(Pos, pLast->Center()) > 64.0f)
+		if(!pLast || !pLast->IsIn(Pos))
 		{
 			m_aHoLastPortalOwner[ClientId] = -1;
 			m_aHoLastPortalIndex[ClientId] = -1;

@@ -175,6 +175,7 @@ private:
 	CHoPortal *m_aaHoPortals[MAX_CLIENTS][2];
 	int m_aHoLastPortalOwner[MAX_CLIENTS];
 	int m_aHoLastPortalIndex[MAX_CLIENTS];
+	bool m_HoSuperPortal;
 
 	static std::optional<std::vector<int>> ClientsForVictim(int ClientId, const char *pVictim, void *pUser);
 	static void CommandCallback(int ClientId, int FlagMask, const char *pCmd, IConsole::IResult *pResult, void *pUser);
@@ -206,6 +207,7 @@ private:
 	static void ConHoPlayerInfo(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoFakePlayer(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoControl(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoSuperPortal(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeam(IConsole::IResult *pResult, void *pUserData);
 	static void ConSetTeamAll(IConsole::IResult *pResult, void *pUserData);
 	static void ConHotReload(IConsole::IResult *pResult, void *pUserData);

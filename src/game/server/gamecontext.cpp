@@ -129,6 +129,7 @@ CGameContext::CGameContext(bool Resetting) :
 	mem_zero(&m_aaHoPortals, sizeof(m_aaHoPortals));
 	std::fill(std::begin(m_aHoLastPortalOwner), std::end(m_aHoLastPortalOwner), -1);
 	std::fill(std::begin(m_aHoLastPortalIndex), std::end(m_aHoLastPortalIndex), -1);
+	m_HoSuperPortal = true;
 
 	m_VoteCreator = -1;
 	m_VoteType = VOTE_TYPE_UNKNOWN;
@@ -3899,6 +3900,17 @@ void CGameContext::ConHoTile(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
 }
 
+void CGameContext::ConHoSuperPortal(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	if(pResult->NumArguments() > 0)
+		pSelf->m_HoSuperPortal = pResult->GetInteger(0) != 0;
+
+	char aBuf[64];
+	str_format(aBuf, sizeof(aBuf), "ho_superportal %d", pSelf->m_HoSuperPortal ? 1 : 0);
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_superportal", aBuf);
+}
+
 void CGameContext::ConPause(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
@@ -4917,6 +4929,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("ho_playerinfo", "i[id] s['name'|'clan'|'skin'|'emotion'|'country'] r[value]", CFGFLAG_SERVER, ConHoPlayerInfo, this, "Change player name, clan, skin, emotion or country");
 	Console()->Register("ho_fakeplayer", "?i[id] ?i[list] ?s[name] ?i[team] ?s[clan] ?i[country] ?s[emote] ?i[aimbot]", CFGFLAG_SERVER, ConHoFakePlayer, this, "Add fake player. No id=max free. list=1 may risk list ban.");
 	Console()->Register("ho_control", "i[id] ?i[id]", CFGFLAG_SERVER, ConHoControl, this, "Control target, or make first id control second id. Press F3/vote yes to exit");
+	Console()->Register("ho_superportal", "?i['0'|'1']", CFGFLAG_SERVER, ConHoSuperPortal, this, "0 requires pprace portalable front tiles, 1 allows portals on regular solid surfaces");
 	Console()->Register("set_team", "i[id] i[team-id] ?i[delay in minutes]", CFGFLAG_SERVER, ConSetTeam, this, "Set team for a player (spectators = -1, game = 0)");
 	Console()->Register("set_team_all", "i[team-id]", CFGFLAG_SERVER, ConSetTeamAll, this, "Set team for all players (spectators = -1, game = 0)");
 	Console()->Register("hot_reload", "", CFGFLAG_SERVER | CMDFLAG_TEST, ConHotReload, this, "Reload the map while preserving the state of tees and teams");
