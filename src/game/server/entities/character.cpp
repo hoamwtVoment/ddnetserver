@@ -1609,6 +1609,9 @@ void CCharacter::HandleBroadcast()
 	// Death-hold owns the HUD; HoHpPlayerTick refreshes it at 1/s.
 	if(HoHpPostDeathActive(m_pPlayer, Server()->Tick()))
 		return;
+	// F3 weapon select owns the broadcast while open.
+	if(m_pPlayer->m_HoWeaponSelectOpen)
+		return;
 
 	const bool ShowRaceTimer = (m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_BROADCAST || m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_GAMETIMER_AND_BROADCAST) && m_DDRaceState == ERaceState::STARTED;
 	const bool ShowHoHp = HoHpShouldBroadcast(m_pPlayer);

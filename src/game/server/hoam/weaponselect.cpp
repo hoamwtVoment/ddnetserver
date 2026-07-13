@@ -248,33 +248,36 @@ void HoWeaponSelectClose(CGameContext *pGameServer, CPlayer *pPlayer, bool Silen
 	pPlayer->m_HoWeaponSelectOpen = false;
 	pPlayer->m_HoWeaponSelectSlot = -1;
 	pPlayer->m_HoWeaponSelectHover = -1;
-	if(!Silent && pGameServer)
-		pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: closed");
+	(void)Silent; // no chat spam on open/close
+
+	// Hand HUD back to HP (if enabled).
+	if(pGameServer)
+	{
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+		{
+			if(pChr->IsAlive() && HoHpShouldBroadcast(pPlayer))
+			{
+				pPlayer->m_HoHpLastBroadcastTick = 0;
+				HoHpSendBroadcast(pChr);
+			}
+		}
+	}
 }
 
 static void HoWeaponSelectOpenMenu(CGameContext *pGameServer, CPlayer *pPlayer)
 {
 	CCharacter *pChr = pPlayer->GetCharacter();
 	if(!pChr || !pChr->IsAlive())
-	{
-		pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: need an alive tee");
 		return;
-	}
 
 	const int Slot = pChr->GetActiveWeapon();
 	if(Slot < 0 || Slot >= CPlayer::HO_WEAPON_MODE_SLOTS)
-	{
-		pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: invalid weapon");
 		return;
-	}
 
 	SOptionDef aDefs[HO_WEAPONSELECT_MAX_OPTIONS];
 	const int Count = BuildOptionsForSlot(pGameServer, pPlayer, Slot, aDefs, HO_WEAPONSELECT_MAX_OPTIONS);
 	if(Count <= 0)
-	{
-		pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: no options for this weapon");
 		return;
-	}
 
 	// If only vanilla exists, still allow open (one option) so player can confirm.
 	DestroyOptions(pGameServer, pPlayer);
@@ -290,8 +293,9 @@ static void HoWeaponSelectOpenMenu(CGameContext *pGameServer, CPlayer *pPlayer)
 			aDefs[i].m_ModeId, aDefs[i].m_PickupType, aDefs[i].m_PickupSubtype);
 	}
 
-	pGameServer->SendBroadcast("Use crosshair + left click to select weapon mode (F3 to close)", pPlayer->GetCid(), true);
-	pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: open — aim and fire to choose, F3 to close");
+	// Broadcast only (no chat). HP updates are suppressed while menu is open.
+	pPlayer->m_HoHpLastBroadcastTick = 0;
+	pGameServer->SendBroadcast("准心左键选择模式 · F3 关闭", pPlayer->GetCid(), true);
 }
 
 bool HoWeaponSelectToggle(CGameContext *pGameServer, CPlayer *pPlayer)
@@ -301,7 +305,7 @@ bool HoWeaponSelectToggle(CGameContext *pGameServer, CPlayer *pPlayer)
 
 	if(pPlayer->m_HoWeaponSelectOpen)
 	{
-		HoWeaponSelectClose(pGameServer, pPlayer, false);
+		HoWeaponSelectClose(pGameServer, pPlayer, true);
 		return true;
 	}
 
@@ -425,10 +429,7 @@ bool HoWeaponSelectOnFire(CCharacter *pChr)
 
 	const int Hover = HoWeaponSelectFindAimed(pPlayer, pChr);
 	if(Hover < 0)
-	{
-		pGameServer->SendChatTarget(pPlayer->GetCid(), "Weapon select: aim closer to an option");
 		return true; // consume fire so you don't shoot while menu open
-	}
 
 	CHoWeaponSelectOption *pOpt = pPlayer->m_apHoWeaponSelectOptions[Hover];
 	if(!pOpt)
@@ -438,6 +439,7 @@ bool HoWeaponSelectOnFire(CCharacter *pChr)
 	const int Mode = pOpt->ModeId();
 	HoWeaponSelectSetActiveMode(pPlayer, Slot, Mode);
 
+	// Brief mode name on HUD only (no chat).
 	SOptionDef aDefs[HO_WEAPONSELECT_MAX_OPTIONS];
 	const int N = BuildOptionsForSlot(pGameServer, pPlayer, Slot, aDefs, HO_WEAPONSELECT_MAX_OPTIONS);
 	const char *pName = "mode";
@@ -449,11 +451,7 @@ bool HoWeaponSelectOnFire(CCharacter *pChr)
 			break;
 		}
 	}
-
-	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "Weapon select: %s", pName);
-	pGameServer->SendChatTarget(pPlayer->GetCid(), aBuf);
-	pGameServer->SendBroadcast(aBuf, pPlayer->GetCid(), true);
+	pGameServer->SendBroadcast(pName, pPlayer->GetCid(), true);
 
 	HoWeaponSelectClose(pGameServer, pPlayer, true);
 	return true;

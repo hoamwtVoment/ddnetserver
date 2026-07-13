@@ -106,7 +106,10 @@ void HoHpNoteDelta(CCharacter *pChr, int Delta)
 
 bool HoHpShouldBroadcast(const CPlayer *pPlayer)
 {
-	return pPlayer && pPlayer->m_HoHpBroadcast && HoHpMax() > 0;
+	// Weapon-select hover owns the broadcast while the menu is open.
+	if(!pPlayer || pPlayer->m_HoWeaponSelectOpen || !pPlayer->m_HoHpBroadcast || HoHpMax() <= 0)
+		return false;
+	return true;
 }
 
 static int HoHpDeltaExpireTick(CCharacter *pChr)
@@ -214,6 +217,10 @@ void HoHpShowOverkillDeath(CCharacter *pChr)
 void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 {
 	if(!pGameServer || !pPlayer)
+		return;
+
+	// Do not refresh HP HUD while F3 weapon select is using the broadcast.
+	if(pPlayer->m_HoWeaponSelectOpen)
 		return;
 
 	IServer *pServer = pGameServer->Server();
