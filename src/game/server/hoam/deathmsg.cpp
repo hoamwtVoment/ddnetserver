@@ -24,6 +24,15 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 		return;
 	}
 
+	if(DeathCause == HO_DEATH_KINETIC)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 感受到了动能", pVictim);
+		else
+			str_format(pBuf, BufSize, "%s experienced kinetic energy", pVictim);
+		return;
+	}
+
 	if(Self || !pKiller)
 	{
 		if(Lang == HO_LANG_ZH)

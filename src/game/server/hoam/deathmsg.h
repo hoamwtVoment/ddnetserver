@@ -8,7 +8,10 @@ class CGameContext;
 enum
 {
 	HO_DEATH_NONE = 0,
+	// Landing after a long fall
 	HO_DEATH_FALL,
+	// Horizontal wall slam at high speed (MC elytra-into-wall style)
+	HO_DEATH_KINETIC,
 };
 
 // Call from Die() when a kill message is sent / player actually dies.

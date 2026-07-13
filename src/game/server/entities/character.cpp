@@ -956,9 +956,9 @@ void CCharacter::TickDeferred()
 	bool StuckAfterQuant = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 	m_Pos = m_Core.m_Pos;
 
-	// Independent fall HP: use pre-move vertical speed as impact velocity.
+	// Independent HP impact: fall (landing) + wall slam (kinetic), pre-move velocity.
 	if(m_Alive && !m_Paused && !m_pPlayer->m_HoFlyMode)
-		HoFallDamageAfterMove(this, StartVel.y);
+		HoFallDamageAfterMove(this, StartVel);
 	if(!m_Alive)
 		return;
 

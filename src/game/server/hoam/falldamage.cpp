@@ -21,14 +21,20 @@ void HoFallDamageReset(CCharacter *pChr)
 	pChr->m_HoFallWasGrounded = true;
 }
 
-void HoFallDamageAfterMove(CCharacter *pChr, float PreMoveVelY)
+static int HoImpactDamage(float Excess, float Scale)
+{
+	const int Damage = (int)std::floor(Excess * HO_IMPACT_DAMAGE_PER_VEL * Scale);
+	return Damage > 0 ? Damage : 0;
+}
+
+void HoFallDamageAfterMove(CCharacter *pChr, vec2 PreMoveVel)
 {
 	if(!pChr || !pChr->IsAlive())
 		return;
 
 	if(!g_Config.m_HoFalldamage)
 	{
-		// Keep state coherent while disabled so enabling mid-session is safe.
+		// Keep fall state coherent while disabled so enabling mid-session is safe.
 		pChr->m_HoFallWasGrounded = pChr->IsGrounded();
 		if(pChr->m_HoFallWasGrounded)
 			pChr->m_HoFallAirVelY = 0.0f;
@@ -47,13 +53,34 @@ void HoFallDamageAfterMove(CCharacter *pChr, float PreMoveVelY)
 		return;
 	}
 
+	const float Scale = g_Config.m_HoFalldamageScale / 100.0f;
+	const int Cid = pPlayer->GetCid();
+
+	// --- Wall slam (horizontal): "experienced kinetic energy" ---
+	// gamecore sets m_Colliding when X velocity is stopped by a wall.
+	if(pChr->Core()->m_Colliding != 0)
+	{
+		const float ImpactX = std::fabs(PreMoveVel.x);
+		const float ExcessX = ImpactX - HO_WALL_VEL_THRESHOLD;
+		const int WallDamage = HoImpactDamage(ExcessX, Scale);
+		if(WallDamage > 0)
+		{
+			if(HoHpTakeDamage(pChr, WallDamage, Cid, WEAPON_WORLD, true, HO_DEATH_KINETIC))
+				return;
+		}
+	}
+
+	if(!pChr->IsAlive())
+		return;
+
+	// --- Fall / landing: "fell from a high place" ---
 	const bool Grounded = pChr->IsGrounded();
-	const float FallVel = PreMoveVelY > pChr->m_HoFallAirVelY ? PreMoveVelY : pChr->m_HoFallAirVelY;
+	const float FallVel = PreMoveVel.y > pChr->m_HoFallAirVelY ? PreMoveVel.y : pChr->m_HoFallAirVelY;
 
 	if(!Grounded)
 	{
-		if(PreMoveVelY > pChr->m_HoFallAirVelY)
-			pChr->m_HoFallAirVelY = PreMoveVelY;
+		if(PreMoveVel.y > pChr->m_HoFallAirVelY)
+			pChr->m_HoFallAirVelY = PreMoveVel.y;
 		pChr->m_HoFallWasGrounded = false;
 		return;
 	}
@@ -65,15 +92,10 @@ void HoFallDamageAfterMove(CCharacter *pChr, float PreMoveVelY)
 	if(!Landed)
 		return;
 
-	const float Excess = FallVel - HO_FALL_VEL_THRESHOLD;
-	if(Excess <= 0.0f)
+	const float ExcessY = FallVel - HO_FALL_VEL_THRESHOLD;
+	const int FallDamage = HoImpactDamage(ExcessY, Scale);
+	if(FallDamage <= 0)
 		return;
 
-	// Scale with ho_falldamage_scale (%). Damage is absolute on the independent HP bar.
-	const float Scale = g_Config.m_HoFalldamageScale / 100.0f;
-	const int Damage = (int)std::floor(Excess * HO_FALL_DAMAGE_PER_VEL * Scale);
-	if(Damage <= 0)
-		return;
-
-	HoHpTakeDamage(pChr, Damage, pPlayer->GetCid(), WEAPON_WORLD, true, HO_DEATH_FALL);
+	HoHpTakeDamage(pChr, FallDamage, Cid, WEAPON_WORLD, true, HO_DEATH_FALL);
 }
