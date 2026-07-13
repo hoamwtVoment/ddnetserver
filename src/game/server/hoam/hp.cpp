@@ -17,13 +17,22 @@ int HoHpMax()
 	return std::max(0, g_Config.m_HoHp);
 }
 
+static void HoHpSendToPlayer(CGameContext *pGameServer, CPlayer *pPlayer, const char *pText)
+{
+	if(!pGameServer || !pPlayer || !pText)
+		return;
+	// Important: non-important broadcasts are dropped for 10s after any important one,
+	// and post-death UI must not be silently discarded.
+	pGameServer->SendBroadcast(pText, pPlayer->GetCid(), true);
+}
+
 void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearBroadcast)
 {
 	if(!pPlayer)
 		return;
 
 	if(ClearBroadcast && pPlayer->m_HoHpPostDeathUntil > 0 && pGameServer)
-		pGameServer->SendBroadcast("", pPlayer->GetCid(), false);
+		HoHpSendToPlayer(pGameServer, pPlayer, "");
 
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
@@ -106,7 +115,7 @@ void HoHpSendBroadcast(CCharacter *pChr)
 
 	char aBuf[96];
 	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
-	pChr->GameServer()->SendBroadcast(aBuf, pPlayer->GetCid(), false);
+	HoHpSendToPlayer(pChr->GameServer(), pPlayer, aBuf);
 }
 
 void HoHpArmPostDeathBroadcast(CCharacter *pChr)
@@ -115,12 +124,13 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 		return;
 
 	CPlayer *pPlayer = pChr->GetPlayer();
-	if(!HoHpShouldBroadcast(pPlayer))
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pPlayer || !pGameServer || !HoHpShouldBroadcast(pPlayer))
 		return;
 
 	// Continue whatever is left of the delta visibility window — do not restart the timer.
 	const int Expire = HoHpDeltaExpireTick(pChr);
-	const int Now = pChr->GameServer()->Server()->Tick();
+	const int Now = pGameServer->Server()->Tick();
 	if(Expire <= Now)
 		return;
 
@@ -131,7 +141,9 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 
 	str_copy(pPlayer->m_aHoHpPostDeathMsg, aBuf);
 	pPlayer->m_HoHpPostDeathUntil = Expire;
-	// Message was already sent by HoHpSendBroadcast; keep it until Expire.
+
+	// Send immediately (important). Caller may Die() right after; player tick keeps refreshing.
+	HoHpSendToPlayer(pGameServer, pPlayer, aBuf);
 }
 
 void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
@@ -139,19 +151,26 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 	if(!pGameServer || !pPlayer || pPlayer->m_HoHpPostDeathUntil <= 0)
 		return;
 
+	// Alive again: drop hold (spawn path also clears; belt-and-suspenders).
+	if(pPlayer->GetCharacter() && pPlayer->GetCharacter()->IsAlive())
+	{
+		HoHpClearPostDeath(pGameServer, pPlayer, false);
+		return;
+	}
+
 	IServer *pServer = pGameServer->Server();
 	const int Now = pServer->Tick();
 
-	if(Now < pPlayer->m_HoHpPostDeathUntil)
+	if(Now <= pPlayer->m_HoHpPostDeathUntil)
 	{
-		// Refresh once per second so other broadcasts cannot wipe it for long.
-		if(Now % pServer->TickSpeed() == 0 && pPlayer->m_aHoHpPostDeathMsg[0])
-			pGameServer->SendBroadcast(pPlayer->m_aHoHpPostDeathMsg, pPlayer->GetCid(), false);
+		// Re-push every tick so death-frame overwrites cannot wipe the line.
+		if(pPlayer->m_aHoHpPostDeathMsg[0])
+			HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
 		return;
 	}
 
 	// Remaining time finished: clear the line.
-	pGameServer->SendBroadcast("", pPlayer->GetCid(), false);
+	HoHpSendToPlayer(pGameServer, pPlayer, "");
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 }
@@ -185,6 +204,10 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 
 	HoHpNoteDelta(pChr, -Damage);
 
+	const bool Lethal = pChr->m_HoHp <= 0;
+	if(Lethal)
+		pChr->m_HoHp = 0;
+
 	if(ShowFeedback)
 	{
 		CGameContext *pGameServer = pChr->GameServer();
@@ -193,14 +216,22 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 		pGameServer->CreateDamageInd(pChr->m_Pos, 0.0f, Stars, Mask);
 		pGameServer->CreateSound(pChr->m_Pos, SOUND_PLAYER_PAIN_SHORT, Mask);
 		pChr->SetEmote(EMOTE_PAIN, pGameServer->Server()->Tick() + pGameServer->Server()->TickSpeed() / 2);
+
+		if(Lethal)
+		{
+			// Arm + send while character is still valid, then die. Player tick keeps it up.
+			HoHpArmPostDeathBroadcast(pChr);
+			pChr->Die(Killer, Weapon);
+			// Die() cannot send broadcast; push again via player after removal.
+			if(pPlayer->m_HoHpPostDeathUntil > 0 && pPlayer->m_aHoHpPostDeathMsg[0])
+				HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
+			return true;
+		}
+
 		HoHpSendBroadcast(pChr);
 	}
-
-	if(pChr->m_HoHp <= 0)
+	else if(Lethal)
 	{
-		pChr->m_HoHp = 0;
-		if(ShowFeedback)
-			HoHpArmPostDeathBroadcast(pChr);
 		pChr->Die(Killer, Weapon);
 		return true;
 	}
