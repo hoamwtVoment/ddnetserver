@@ -29,7 +29,6 @@ private:
 	vec2 m_To;
 	int m_EvalTick;
 	int m_LastDamageTick;
-	int m_LastSoundTick;
 };
 
 // Call each character weapon tick: maintain beam while holding fire in cannon mode.

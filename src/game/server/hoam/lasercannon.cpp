@@ -47,14 +47,20 @@ CHoLaserCannonBeam::CHoLaserCannonBeam(CGameWorld *pGameWorld, int Owner) :
 	m_From(0.0f, 0.0f),
 	m_To(0.0f, 0.0f),
 	m_EvalTick(0),
-	m_LastDamageTick(0),
-	m_LastSoundTick(0)
+	m_LastDamageTick(0)
 {
 	GameWorld()->InsertEntity(this);
+	// Stable StartTick base; Snap clamps to recent ticks so the beam stays continuous
+	// without re-triggering rifle fire FX every server tick.
 	m_EvalTick = Server()->Tick();
 	if(Owner >= 0 && Owner < MAX_CLIENTS && GameServer()->m_apPlayers[Owner])
 		GameServer()->m_apPlayers[Owner]->m_pHoLaserCannon = this;
+
 	UpdateBeam();
+
+	// One fire sound on start only (no hold-fire spam).
+	if(CCharacter *pOwner = GameServer()->GetPlayerChar(Owner))
+		GameServer()->CreateSound(pOwner->GetPos(), SOUND_LASER_FIRE, pOwner->TeamMask());
 }
 
 void CHoLaserCannonBeam::Reset()
@@ -130,14 +136,7 @@ void CHoLaserCannonBeam::UpdateBeam()
 	m_From = Start;
 	m_To = End;
 	m_Pos = End;
-	m_EvalTick = Server()->Tick();
-
-	// Fire sound throttle (~4/s).
-	if(Server()->Tick() - m_LastSoundTick >= Server()->TickSpeed() / 4)
-	{
-		m_LastSoundTick = Server()->Tick();
-		GameServer()->CreateSound(pOwner->GetPos(), SOUND_LASER_FIRE, pOwner->TeamMask());
-	}
+	// Do not refresh m_EvalTick every tick — that makes rifle lasers look like they re-fire (stutter + FX).
 }
 
 void CHoLaserCannonBeam::Tick()
@@ -167,10 +166,18 @@ void CHoLaserCannonBeam::Snap(int SnappingClient)
 		}
 	}
 
+	// Same continuous-laser StartTick clamp as doors/draggers/lights: keep the segment
+	// visible and stable without resetting fire age every tick.
+	int StartTick = m_EvalTick;
+	if(StartTick < Server()->Tick() - 4)
+		StartTick = Server()->Tick() - 4;
+	else if(StartTick > Server()->Tick())
+		StartTick = Server()->Tick();
+
 	const int Version = GameServer()->GetClientVersion(SnappingClient);
 	GameServer()->SnapLaserObject(
 		CSnapContext(Version, Server()->IsSixup(SnappingClient), SnappingClient),
-		GetId().value(), m_To, m_From, m_EvalTick, m_Owner, LASERTYPE_RIFLE, 0, -1);
+		GetId().value(), m_To, m_From, StartTick, m_Owner, LASERTYPE_RIFLE, 0, -1);
 }
 
 void CHoLaserCannonBeam::SwapClients(int Client1, int Client2)

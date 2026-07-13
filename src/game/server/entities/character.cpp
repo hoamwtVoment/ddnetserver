@@ -496,6 +496,12 @@ void CCharacter::FireWeapon()
 	}
 
 	DoWeaponSwitch();
+
+	// Laser cannon is a continuous beam entity (hold fire). Skip FullAuto FireWeapon so we
+	// do not refresh AttackTick / predicted rifle shots every fire-delay (client laser SFX spam).
+	if(m_Core.m_ActiveWeapon == WEAPON_LASER && HoLaserCannonModeActive(m_pPlayer))
+		return;
+
 	vec2 MouseTarget = vec2(m_LatestInput.m_TargetX, m_LatestInput.m_TargetY);
 	vec2 Direction = normalize(MouseTarget);
 
@@ -1292,6 +1298,10 @@ void CCharacter::SnapCharacter(int SnappingClient, int Id)
 		Health = m_Health;
 		Armor = m_Armor;
 		AmmoCount = (m_FreezeTime == 0 && m_Core.m_ActiveWeapon >= 0) ? m_Core.m_aWeapons[m_Core.m_ActiveWeapon].m_Ammo : 0;
+		// Cannon mode: report empty ammo so vanilla clients do not FullAuto-predict rifle
+		// shots (and SOUND_LASER_FIRE) while the server beam entity is the real weapon.
+		if(HoLaserCannonModeActive(m_pPlayer) && m_Core.m_ActiveWeapon == WEAPON_LASER)
+			AmmoCount = 0;
 	}
 
 	if(!Server()->IsSixup(SnappingClient))
