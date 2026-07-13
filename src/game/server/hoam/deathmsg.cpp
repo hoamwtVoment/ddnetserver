@@ -12,12 +12,24 @@
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
 
+// Combat tag duration for "doomed to fall" / "whilst trying to escape" lines.
+static constexpr int HO_LAST_HIT_SECS = 8;
+
 // DDRace shotgun is the freeze laser, not a pellet gun.
-static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, const char *pVictim, const char *pKiller, char *pBuf, int BufSize)
+// pAttacker: last recent hitter (hammer etc.), for MC escape/doomed lines; may be null.
+static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, const char *pVictim, const char *pKiller, const char *pAttacker, char *pBuf, int BufSize)
 {
 	if(DeathCause == HO_DEATH_FALL)
 	{
-		if(Lang == HO_LANG_ZH)
+		if(pAttacker)
+		{
+			// MC: was doomed to fall by %s / 被%s推下了悬崖
+			if(Lang == HO_LANG_ZH)
+				str_format(pBuf, BufSize, "%s 被 %s 推下了悬崖", pVictim, pAttacker);
+			else
+				str_format(pBuf, BufSize, "%s was doomed to fall by %s", pVictim, pAttacker);
+		}
+		else if(Lang == HO_LANG_ZH)
 			str_format(pBuf, BufSize, "%s 从高处摔了下来", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s fell from a high place", pVictim);
@@ -26,7 +38,15 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 
 	if(DeathCause == HO_DEATH_KINETIC)
 	{
-		if(Lang == HO_LANG_ZH)
+		if(pAttacker)
+		{
+			// MC: experienced kinetic energy whilst trying to escape %s
+			if(Lang == HO_LANG_ZH)
+				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时感受到了动能", pVictim, pAttacker);
+			else
+				str_format(pBuf, BufSize, "%s experienced kinetic energy whilst trying to escape %s", pVictim, pAttacker);
+		}
+		else if(Lang == HO_LANG_ZH)
 			str_format(pBuf, BufSize, "%s 感受到了动能", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s experienced kinetic energy", pVictim);
@@ -35,7 +55,14 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 
 	if(DeathCause == HO_DEATH_BORDER)
 	{
-		if(Lang == HO_LANG_ZH)
+		if(pAttacker)
+		{
+			if(Lang == HO_LANG_ZH)
+				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时掉出了地图", pVictim, pAttacker);
+			else
+				str_format(pBuf, BufSize, "%s fell out of the map whilst trying to escape %s", pVictim, pAttacker);
+		}
+		else if(Lang == HO_LANG_ZH)
 			str_format(pBuf, BufSize, "%s 掉出了地图", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s fell out of the map", pVictim);
@@ -44,7 +71,15 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 
 	if(DeathCause == HO_DEATH_SPIKE)
 	{
-		if(Lang == HO_LANG_ZH)
+		if(pAttacker)
+		{
+			// MC cactus style: whilst trying to escape
+			if(Lang == HO_LANG_ZH)
+				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时被刺扎死了", pVictim, pAttacker);
+			else
+				str_format(pBuf, BufSize, "%s was impaled on spikes whilst trying to escape %s", pVictim, pAttacker);
+		}
+		else if(Lang == HO_LANG_ZH)
 			str_format(pBuf, BufSize, "%s 被刺扎死了", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s was impaled on spikes", pVictim);
@@ -97,7 +132,6 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 			str_format(pBuf, BufSize, "%s 被 %s 开枪打死了", pVictim, pKiller);
 			break;
 		case WEAPON_SHOTGUN:
-			// DDRace: shotgun slot = freeze laser
 			str_format(pBuf, BufSize, "%s 被 %s 的冰冻激光杀死了", pVictim, pKiller);
 			break;
 		case WEAPON_GRENADE:
@@ -128,7 +162,6 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 			str_format(pBuf, BufSize, "%s was shot by %s", pVictim, pKiller);
 			break;
 		case WEAPON_SHOTGUN:
-			// DDRace: shotgun slot = freeze laser
 			str_format(pBuf, BufSize, "%s was freeze-lasered by %s", pVictim, pKiller);
 			break;
 		case WEAPON_GRENADE:
@@ -173,7 +206,19 @@ void HoDeathMsgOnDie(CGameContext *pGameServer, CCharacter *pVictim, int Killer,
 	if(!Self && Killer >= 0 && Killer < MAX_CLIENTS && pGameServer->m_apPlayers[Killer])
 		pKillerName = pGameServer->Server()->ClientName(Killer);
 
-	// Per-client language (same look as system chat: ClientId -1).
+	// Recent combat tag (hammer knockback etc.) for doomed/escape lines.
+	const char *pAttackerName = nullptr;
+	const int Now = pGameServer->Server()->Tick();
+	const int HitWindow = pGameServer->Server()->TickSpeed() * HO_LAST_HIT_SECS;
+	if(pVictim->m_HoLastHitCid >= 0 && pVictim->m_HoLastHitCid < MAX_CLIENTS &&
+		pVictim->m_HoLastHitCid != VictimId &&
+		pVictim->m_HoLastHitTick > 0 &&
+		Now - pVictim->m_HoLastHitTick <= HitWindow &&
+		pGameServer->m_apPlayers[pVictim->m_HoLastHitCid])
+	{
+		pAttackerName = pGameServer->Server()->ClientName(pVictim->m_HoLastHitCid);
+	}
+
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
 		CPlayer *pViewer = pGameServer->m_apPlayers[i];
@@ -181,15 +226,14 @@ void HoDeathMsgOnDie(CGameContext *pGameServer, CCharacter *pVictim, int Killer,
 			continue;
 
 		char aMsg[256];
-		HoDeathMsgFormat(HoLangResolve(pGameServer, pViewer), DeathCause, Weapon, Self, pVictimName, pKillerName, aMsg, sizeof(aMsg));
+		HoDeathMsgFormat(HoLangResolve(pGameServer, pViewer), DeathCause, Weapon, Self, pVictimName, pKillerName, pAttackerName, aMsg, sizeof(aMsg));
 		pGameServer->SendChatTarget(i, aMsg);
 	}
 
-	// Demo recording: English system line
 	if(g_Config.m_SvDemoChat)
 	{
 		char aDemo[256];
-		HoDeathMsgFormat(HO_LANG_EN, DeathCause, Weapon, Self, pVictimName, pKillerName, aDemo, sizeof(aDemo));
+		HoDeathMsgFormat(HO_LANG_EN, DeathCause, Weapon, Self, pVictimName, pKillerName, pAttackerName, aDemo, sizeof(aDemo));
 		CNetMsg_Sv_Chat Msg;
 		Msg.m_Team = 0;
 		Msg.m_ClientId = -1;

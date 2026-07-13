@@ -55,6 +55,9 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoFallAirVelY = 0.0f;
 	m_HoFallWasGrounded = true;
 	m_HoDeathCause = 0;
+	m_HoLastHitCid = -1;
+	m_HoLastHitTick = 0;
+	m_HoLastHitWeapon = -1;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -132,6 +135,9 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	HoHpReset(this);
 	HoFallDamageReset(this);
 	m_HoDeathCause = 0;
+	m_HoLastHitCid = -1;
+	m_HoLastHitTick = 0;
+	m_HoLastHitWeapon = -1;
 
 	int Team = GameServer()->m_aTeamMapping[m_pPlayer->GetCid()];
 
@@ -1143,6 +1149,14 @@ bool CCharacter::TakeDamage(vec2 Force, int Dmg, int From, int Weapon)
 	if(Dmg)
 	{
 		SetEmote(EMOTE_PAIN, Server()->Tick() + 500 * Server()->TickSpeed() / 1000);
+	}
+
+	// Tag last attacker for MC "doomed to fall" / "whilst trying to escape" death lines.
+	if(From >= 0 && From < MAX_CLIENTS && m_pPlayer && From != m_pPlayer->GetCid() && GameServer()->m_apPlayers[From])
+	{
+		m_HoLastHitCid = From;
+		m_HoLastHitTick = Server()->Tick();
+		m_HoLastHitWeapon = Weapon;
 	}
 
 	vec2 Temp = m_Core.m_Vel + Force;

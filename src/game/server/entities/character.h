@@ -249,6 +249,10 @@ public:
 	bool m_HoFallWasGrounded;
 	// Last independent-HP death cause for Minecraft-style chat (hoam/deathmsg.h)
 	int m_HoDeathCause;
+	// Last player who hit this tee (hammer knockback etc.) for doomed/escape death lines
+	int m_HoLastHitCid;
+	int m_HoLastHitTick;
+	int m_HoLastHitWeapon;
 
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }
