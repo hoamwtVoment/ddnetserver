@@ -213,9 +213,16 @@ void HoWeaponSelectSetActiveMode(CPlayer *pPlayer, int WeaponSlot, int ModeId)
 	if(WeaponSlot == WEAPON_LASER)
 	{
 		// 0 classic, 1 portal1, 2 portal2, 3 laser cannon
+		const int PrevMode = pPlayer->m_HoLaserMode;
 		pPlayer->m_HoLaserMode = ModeId;
 		if(ModeId == HO_WPNMODE_LASER_PORTAL1 || ModeId == HO_WPNMODE_LASER_PORTAL2)
 			pPlayer->m_HoLastPortalMode = ModeId;
+		// Refresh client tunings when entering/leaving cannon (laser_reach suppress).
+		if(PrevMode != ModeId && (PrevMode == HO_WPNMODE_LASER_CANNON || ModeId == HO_WPNMODE_LASER_CANNON))
+		{
+			if(CCharacter *pChr = pPlayer->GetCharacter())
+				pChr->GameServer()->SendTuningParams(pPlayer->GetCid(), pChr->m_TuneZone);
+		}
 	}
 	// Ninja controller: ownership stays on gamecontext; mode picks fire behavior.
 }

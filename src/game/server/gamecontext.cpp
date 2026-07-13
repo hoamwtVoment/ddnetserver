@@ -6,6 +6,7 @@
 #include "gamemodes/ddnet.h"
 #include "gamemodes/mod.h"
 #include "hoam/lang.h"
+#include "hoam/lasercannon.h"
 #include "hoam/weaponselect.h"
 #include "player.h"
 #include "score.h"
@@ -582,7 +583,7 @@ void CGameContext::SnapSwitchers(int SnappingClient)
 	Server()->SnapNewItem(SentTeam, SwitchState);
 }
 
-void CGameContext::SnapLaserObject(const CSnapContext &Context, int SnapId, const vec2 &To, const vec2 &From, int StartTick, int Owner, int LaserType, int Subtype, int SwitchNumber) const
+void CGameContext::SnapLaserObject(const CSnapContext &Context, int SnapId, const vec2 &To, const vec2 &From, int StartTick, int Owner, int LaserType, int Subtype, int SwitchNumber, int Flags) const
 {
 	if(Context.GetClientVersion() >= VERSION_DDNET_MULTI_LASER)
 	{
@@ -596,7 +597,7 @@ void CGameContext::SnapLaserObject(const CSnapContext &Context, int SnapId, cons
 		Laser.m_Type = LaserType;
 		Laser.m_Subtype = Subtype;
 		Laser.m_SwitchNumber = SwitchNumber;
-		Laser.m_Flags = 0;
+		Laser.m_Flags = Flags;
 		Server()->SnapNewItem(SnapId, Laser);
 	}
 	else
@@ -1131,6 +1132,15 @@ void CGameContext::SendTuningParams(int ClientId, int Zone)
 	if(NeededFakeTuning & FAKETUNE_NOHAMMER)
 	{
 		Params.m_HammerStrength = 0;
+	}
+
+	// Laser cannon: vanilla clients always FullAuto-predict rifle shots using laser_reach
+	// (default 800). That draws a short beam with a head while our server entity is longer
+	// (ho_lasercannon_length). Zero reach so predicted ghost beams collapse to nothing.
+	if(pCharacter && HoLaserCannonModeActive(m_apPlayers[ClientId]) &&
+		pCharacter->GetActiveWeapon() == WEAPON_LASER)
+	{
+		Params.m_LaserReach = 0;
 	}
 
 	CMsgPacker Msg(NETMSGTYPE_SV_TUNEPARAMS);

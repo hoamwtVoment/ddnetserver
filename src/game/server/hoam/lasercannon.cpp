@@ -175,9 +175,11 @@ void CHoLaserCannonBeam::Snap(int SnappingClient)
 		StartTick = Server()->Tick();
 
 	const int Version = GameServer()->GetClientVersion(SnappingClient);
+	// NO_PREDICT: do not put this long beam into the client's rifle prediction world
+	// (would fight with laser_reach-sized predicted shots).
 	GameServer()->SnapLaserObject(
 		CSnapContext(Version, Server()->IsSixup(SnappingClient), SnappingClient),
-		GetId().value(), m_To, m_From, StartTick, m_Owner, LASERTYPE_RIFLE, 0, -1);
+		GetId().value(), m_To, m_From, StartTick, m_Owner, LASERTYPE_RIFLE, 0, -1, LASERFLAG_NO_PREDICT);
 }
 
 void CHoLaserCannonBeam::SwapClients(int Client1, int Client2)

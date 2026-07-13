@@ -184,6 +184,7 @@ void CCharacter::SetWeapon(int W)
 	if(W == m_Core.m_ActiveWeapon)
 		return;
 
+	const int PrevWeapon = m_Core.m_ActiveWeapon;
 	m_LastWeapon = m_Core.m_ActiveWeapon;
 	m_QueuedWeapon = -1;
 	m_Core.m_ActiveWeapon = W;
@@ -191,6 +192,10 @@ void CCharacter::SetWeapon(int W)
 
 	if(m_Core.m_ActiveWeapon < 0 || m_Core.m_ActiveWeapon >= NUM_WEAPONS)
 		m_Core.m_ActiveWeapon = 0;
+
+	// Entering/leaving laser while cannon mode is selected toggles client laser_reach suppress.
+	if(HoLaserCannonModeActive(m_pPlayer) && (PrevWeapon == WEAPON_LASER || m_Core.m_ActiveWeapon == WEAPON_LASER))
+		GameServer()->SendTuningParams(m_pPlayer->GetCid(), m_TuneZone);
 }
 
 void CCharacter::SetJetpack(bool Active)
