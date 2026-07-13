@@ -7,6 +7,7 @@
 #include "gamecontroller.h"
 #include "hoam/hp.h"
 #include "hoam/lang.h"
+#include "hoam/weaponselect.h"
 #include "score.h"
 
 #include <base/dbg.h>
@@ -102,6 +103,14 @@ void CPlayer::Reset()
 	m_HoHpPendingSpawnBroadcast = false;
 	m_HoHpLastBroadcastTick = 0;
 	m_HoMaceHammer = false;
+	for(int i = 0; i < HO_WEAPON_MODE_SLOTS; i++)
+		m_aHoWeaponMode[i] = 0;
+	m_HoWeaponSelectOpen = false;
+	m_HoWeaponSelectSlot = -1;
+	m_HoWeaponSelectCount = 0;
+	m_HoWeaponSelectHover = -1;
+	for(int i = 0; i < 8; i++)
+		m_apHoWeaponSelectOptions[i] = nullptr;
 	HoLangInitPlayer(this);
 
 	m_SendVoteIndex = -1;
@@ -198,6 +207,8 @@ void CPlayer::Tick()
 
 	// Hold lethal HP/delta broadcast for the remaining delta visibility time.
 	HoHpPlayerTick(GameServer(), this);
+	// F3 weapon-select menu follow / hover
+	HoWeaponSelectTickPlayer(GameServer(), this);
 
 	if(m_ChatScore > 0)
 		m_ChatScore--;

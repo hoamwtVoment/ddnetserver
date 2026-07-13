@@ -127,8 +127,17 @@ public:
 	int m_HoHpLastBroadcastTick;
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
-	// Minecraft mace mode: hammer attacks use mace smash/fall damage rules
+	// Minecraft mace ownership (rcon ho_macehammer); active mode in m_aHoWeaponMode[HAMMER]
 	bool m_HoMaceHammer;
+	// Per-weapon mode (0 = vanilla). Selected via F3 weapon select menu. Indices: hammer..ninja
+	static const int HO_WEAPON_MODE_SLOTS = 6;
+	int m_aHoWeaponMode[HO_WEAPON_MODE_SLOTS];
+	// F3 weapon-select radial menu
+	bool m_HoWeaponSelectOpen;
+	int m_HoWeaponSelectSlot;
+	int m_HoWeaponSelectCount;
+	int m_HoWeaponSelectHover;
+	class CHoWeaponSelectOption *m_apHoWeaponSelectOptions[8];
 
 	// network latency calculations
 	struct

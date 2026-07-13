@@ -82,7 +82,8 @@ bool HoMaceTryHammerHit(CCharacter *pAttacker, CCharacter *pTarget)
 		return false;
 
 	CPlayer *pAtkPlayer = pAttacker->GetPlayer();
-	if(!pAtkPlayer || !pAtkPlayer->m_HoMaceHammer)
+	// Owned via ho_macehammer AND selected as active hammer mode (weapon select).
+	if(!pAtkPlayer || !pAtkPlayer->m_HoMaceHammer || pAtkPlayer->m_aHoWeaponMode[WEAPON_HAMMER] != 1) // 1 = mace mode
 		return false;
 
 	CGameContext *pGameServer = pAttacker->GameServer();

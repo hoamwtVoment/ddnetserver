@@ -6,6 +6,7 @@
 #include "gamemodes/ddnet.h"
 #include "gamemodes/mod.h"
 #include "hoam/lang.h"
+#include "hoam/weaponselect.h"
 #include "player.h"
 #include "score.h"
 #include "teeinfo.h"
@@ -3147,8 +3148,16 @@ void CGameContext::OnVoteNetMessage(const CNetMsg_Cl_Vote *pMsg, int ClientId)
 		return;
 	}
 
+	// Active vote always wins over weapon select (F3 = vote yes).
 	if(!m_VoteCloseTime)
+	{
+		// No vote running: F3 / vote yes toggles weapon mode select for current weapon.
+		if(pMsg->m_Vote > 0 && m_apPlayers[ClientId])
+		{
+			HoWeaponSelectToggle(this, m_apPlayers[ClientId]);
+		}
 		return;
+	}
 
 	CPlayer *pPlayer = m_apPlayers[ClientId];
 

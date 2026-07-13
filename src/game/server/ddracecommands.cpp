@@ -827,10 +827,15 @@ void CGameContext::ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData)
 
 	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
 	pPlayer->m_HoMaceHammer = !pPlayer->m_HoMaceHammer;
+	// Ownership toggle: enable selects mace mode; disable falls back to vanilla.
+	if(pPlayer->m_HoMaceHammer)
+		pPlayer->m_aHoWeaponMode[WEAPON_HAMMER] = 1; // HO_WPNMODE_HAMMER_MACE
+	else
+		pPlayer->m_aHoWeaponMode[WEAPON_HAMMER] = 0;
 
 	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "mace hammer %s for %d '%s'",
-		pPlayer->m_HoMaceHammer ? "ON" : "OFF",
+	str_format(aBuf, sizeof(aBuf), "mace hammer %s for %d '%s' (F3 weapon select while holding hammer)",
+		pPlayer->m_HoMaceHammer ? "OWNED" : "REMOVED",
 		ClientId, pSelf->Server()->ClientName(ClientId));
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
 }
@@ -862,10 +867,11 @@ void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserD
 	if(pSelf->m_aHoNinjaController[ClientId])
 	{
 		pSelf->DisableHoNinjaController(ClientId, true);
+		pSelf->m_apPlayers[ClientId]->m_aHoWeaponMode[WEAPON_NINJA] = 0; // vanilla ninja
 		char aBuf[128];
 		str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller disabled for client %d", ClientId);
 		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", aBuf);
-		pSelf->SendChatTarget(ClientId, "ho_ninjacontroller disabled");
+		pSelf->SendChatTarget(ClientId, "ho_ninjacontroller disabled (F3 ninja select: vanilla only)");
 		return;
 	}
 
@@ -878,11 +884,13 @@ void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserD
 	pChr->SetNinjaActivationTick(pSelf->Server()->Tick());
 	pChr->SetNinjaCurrentMoveTime(0);
 	pChr->SetWeapon(WEAPON_NINJA);
+	// Default active mode = controller; F3 can switch to vanilla ninja dash.
+	pSelf->m_apPlayers[ClientId]->m_aHoWeaponMode[WEAPON_NINJA] = 1; // HO_WPNMODE_NINJA_CONTROLLER
 
 	char aBuf[128];
 	str_format(aBuf, sizeof(aBuf), "ho_ninjacontroller enabled for client %d", ClientId);
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_ninjacontroller", aBuf);
-	pSelf->SendChatTarget(ClientId, "ho_ninjacontroller enabled: select ninja and left click a player, click again to release");
+	pSelf->SendChatTarget(ClientId, "ho_ninjacontroller owned: hold ninja, F3 pick Controller or Ninja; fire grabs at cursor");
 }
 
 void CGameContext::ConKill(IConsole::IResult *pResult, void *pUserData)

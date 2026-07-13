@@ -24,6 +24,7 @@
 #include <game/server/hoam/falldamage.h>
 #include <game/server/hoam/hp.h>
 #include <game/server/hoam/macehammer.h>
+#include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
 #include <game/server/score.h>
 #include <game/server/teams.h>
@@ -323,7 +324,9 @@ void CCharacter::HandleNinja()
 {
 	if(m_Core.m_ActiveWeapon != WEAPON_NINJA)
 		return;
-	if(GameServer()->IsHoNinjaController(m_pPlayer->GetCid()))
+	// Controller mode: no vanilla ninja dash timer / melt logic.
+	if(GameServer()->IsHoNinjaController(m_pPlayer->GetCid()) &&
+		HoWeaponSelectActiveMode(m_pPlayer, WEAPON_NINJA) == HO_WPNMODE_NINJA_CONTROLLER)
 		return;
 
 	if((Server()->Tick() - m_Core.m_Ninja.m_ActivationTick) > (g_pData->m_Weapons.m_Ninja.m_Duration * Server()->TickSpeed() / 1000))
@@ -520,6 +523,15 @@ void CCharacter::FireWeapon()
 	if(!WillFire)
 		return;
 
+	// Weapon-select menu consumes fire (aim + left click to choose mode).
+	if(m_pPlayer->m_HoWeaponSelectOpen && HoWeaponSelectOnFire(this))
+	{
+		m_AttackTick = Server()->Tick();
+		if(m_ReloadTimer == 0)
+			m_ReloadTimer = Server()->TickSpeed() / 4;
+		return;
+	}
+
 	if(m_FreezeTime)
 	{
 		// Timer stuff to avoid shrieking orchestra caused by unfreeze-plasma
@@ -668,8 +680,13 @@ void CCharacter::FireWeapon()
 
 	case WEAPON_NINJA:
 	{
-		if(GameServer()->FireHoNinjaController(this, m_pPlayer->m_CameraInfo.ConvertTargetToWorld(m_Pos, MouseTarget)))
-			break;
+		// Ninja controller only when owned + selected in F3 weapon menu.
+		if(GameServer()->IsHoNinjaController(m_pPlayer->GetCid()) &&
+			HoWeaponSelectActiveMode(m_pPlayer, WEAPON_NINJA) == HO_WPNMODE_NINJA_CONTROLLER)
+		{
+			if(GameServer()->FireHoNinjaController(this, m_pPlayer->m_CameraInfo.ConvertTargetToWorld(m_Pos, MouseTarget)))
+				break;
+		}
 
 		// reset Hit objects
 		m_NumObjectsHit = 0;
