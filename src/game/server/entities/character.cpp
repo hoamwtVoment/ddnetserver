@@ -1043,6 +1043,14 @@ void CCharacter::TickDeferred()
 		if(Events & COREEVENT_GROUND_JUMP)
 			GameServer()->CreateSound(m_Pos, SOUND_PLAYER_JUMP, TeamMaskExceptSelfAndSixup);
 
+		// Air jump SFX: self plays SOUND_PLAYER_AIRJUMP via client prediction; others detect
+		// the rising edge of m_Jumped bit2 in snaps. EndlessJump/Super/extra multi-jumps clear
+		// that bit in DDRacePostCoreTick (same tick, before snap), so remote clients never see
+		// the edge — only then broadcast the sound. Skip when bit2 is still set (normal last
+		// airjump) to avoid stacking with client snap detection.
+		if((Events & COREEVENT_AIR_JUMP) && !(m_Core.m_Jumped & 2))
+			GameServer()->CreateSound(m_Pos, SOUND_PLAYER_AIRJUMP, TeamMaskExceptSelfAndSixup);
+
 		if(Events & COREEVENT_HOOK_ATTACH_PLAYER)
 			GameServer()->CreateSound(m_Pos, SOUND_HOOK_ATTACH_PLAYER, TeamMaskExceptSixup);
 
