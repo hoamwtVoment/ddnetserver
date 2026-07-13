@@ -85,6 +85,8 @@ namespace
 			pOut[N++] = {HO_WPNMODE_LASER_PORTAL1, POWERUP_ARMOR, 0, "Portal 1", "Place portal entrance (laser)"};
 		if(N < Max)
 			pOut[N++] = {HO_WPNMODE_LASER_PORTAL2, POWERUP_HEALTH, 0, "Portal 2", "Place portal exit (laser)"};
+		if(N < Max)
+			pOut[N++] = {HO_WPNMODE_LASER_CANNON, POWERUP_WEAPON, WEAPON_LASER, "Cannon", "Hold fire: continuous laser beam (no bounce)"};
 		(void)pPlayer;
 		return N;
 	}
@@ -210,7 +212,7 @@ void HoWeaponSelectSetActiveMode(CPlayer *pPlayer, int WeaponSlot, int ModeId)
 	}
 	if(WeaponSlot == WEAPON_LASER)
 	{
-		// 0 classic, 1 portal1, 2 portal2
+		// 0 classic, 1 portal1, 2 portal2, 3 laser cannon
 		pPlayer->m_HoLaserMode = ModeId;
 		if(ModeId == HO_WPNMODE_LASER_PORTAL1 || ModeId == HO_WPNMODE_LASER_PORTAL2)
 			pPlayer->m_HoLastPortalMode = ModeId;

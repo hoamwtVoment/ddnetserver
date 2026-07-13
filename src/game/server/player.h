@@ -114,6 +114,8 @@ public:
 	vec2 m_HoFlyRemainder;
 	int m_HoLaserMode;
 	int m_HoLastPortalMode;
+	// Active continuous laser-cannon beam entity (nullptr if none)
+	class CHoLaserCannonBeam *m_pHoLaserCannon;
 	// Independent HP broadcast (default on); toggle with /hp
 	bool m_HoHpBroadcast;
 	// Second broadcast line for last damage/heal delta (default on); toggle with /hpdmg

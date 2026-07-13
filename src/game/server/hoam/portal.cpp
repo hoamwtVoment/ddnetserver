@@ -164,7 +164,9 @@ void CHoPortal::SwapClients(int Client1, int Client2)
 
 bool CGameContext::TryCreateHoPortal(int Owner, vec2 CollisionPos, vec2 LaserDirection)
 {
-	if(!CheckClientId(Owner) || !m_apPlayers[Owner] || m_apPlayers[Owner]->m_HoLaserMode == 0)
+	// Only portal modes 1/2 place portals (not classic 0 or laser cannon 3).
+	if(!CheckClientId(Owner) || !m_apPlayers[Owner] ||
+		m_apPlayers[Owner]->m_HoLaserMode < 1 || m_apPlayers[Owner]->m_HoLaserMode > 2)
 		return false;
 
 	const int Width = Collision()->GetWidth();

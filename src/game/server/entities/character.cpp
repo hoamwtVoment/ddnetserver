@@ -24,6 +24,7 @@
 #include <game/server/hoam/falldamage.h>
 #include <game/server/hoam/hp.h>
 #include <game/server/hoam/macehammer.h>
+#include <game/server/hoam/lasercannon.h>
 #include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
 #include <game/server/score.h>
@@ -671,6 +672,11 @@ void CCharacter::FireWeapon()
 
 	case WEAPON_LASER:
 	{
+		// Laser cannon: continuous beam is driven by HoLaserCannonTickCharacter (hold fire).
+		// Do not spawn bouncing vanilla CLaser while cannon mode is active.
+		if(HoLaserCannonModeActive(m_pPlayer))
+			break;
+
 		float LaserReach = GetTuning(m_TuneZone)->m_LaserReach;
 
 		new CLaser(GameWorld(), m_Pos, Direction, LaserReach, m_pPlayer->GetCid(), WEAPON_LASER);
@@ -716,6 +722,8 @@ void CCharacter::HandleWeapons()
 	//ninja
 	HandleNinja();
 	HandleJetpack();
+	// Laser cannon beam (hold fire) — independent of weapon reload timer.
+	HoLaserCannonTickCharacter(this);
 
 	if(m_PainSoundTimer > 0)
 		m_PainSoundTimer--;

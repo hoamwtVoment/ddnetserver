@@ -16,6 +16,7 @@ enum
 	// Laser extras (existing portal modes as selectable styles)
 	HO_WPNMODE_LASER_PORTAL1 = 1,
 	HO_WPNMODE_LASER_PORTAL2 = 2,
+	HO_WPNMODE_LASER_CANNON = 3, // continuous beam, no bounce
 	// Ninja extras
 	HO_WPNMODE_NINJA_CONTROLLER = 1, // gravity grab controller
 };

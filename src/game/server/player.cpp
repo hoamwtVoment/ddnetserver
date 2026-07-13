@@ -96,6 +96,7 @@ void CPlayer::Reset()
 	m_HoFlyRemainder = vec2(0, 0);
 	m_HoLaserMode = 0;
 	m_HoLastPortalMode = 1;
+	m_pHoLaserCannon = nullptr;
 	m_HoHpBroadcast = true;
 	m_HoHpDeltaBroadcast = true;
 	m_HoHpPostDeathUntil = 0;
