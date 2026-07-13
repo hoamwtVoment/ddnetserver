@@ -5043,6 +5043,7 @@ void CGameContext::RegisterChatCommands()
 {
 	Console()->Register("portal", "?i['1'|'2']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortal, this, "Set PORTAL mode and toggle it");
 	Console()->Register("portaltoggle", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortalToggle, this, "Toggle your portal gun on or off");
+	Console()->Register("hp", "?i['0'|'1']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoHp, this, "Toggle independent HP broadcast display (0=off, 1=on)");
 	Console()->Register("credits", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConCredits, this, "Shows the credits of the DDNet mod");
 	Console()->Register("rules", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConRules, this, "Shows the server rules");
 	Console()->Register("emote", "?s[emote name] i[duration in seconds]", CFGFLAG_CHAT | CFGFLAG_SERVER, ConEyeEmote, this, "Sets your tee's eye emote");

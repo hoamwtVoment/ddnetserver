@@ -240,6 +240,11 @@ public:
 	int m_SpawnTick;
 	int m_WeaponChangeTick;
 
+	// hoam independent HP (not Teeworlds m_Health); fall tracking for fall damage source
+	int m_HoHp;
+	float m_HoFallAirVelY;
+	bool m_HoFallWasGrounded;
+
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }
 	void SetLastWeapon(int LastWeap) { m_LastWeapon = LastWeap; }

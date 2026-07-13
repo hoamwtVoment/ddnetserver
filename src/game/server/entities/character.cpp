@@ -20,6 +20,8 @@
 #include <game/mapitems.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/hoam/falldamage.h>
+#include <game/server/hoam/hp.h>
 #include <game/server/player.h>
 #include <game/server/score.h>
 #include <game/server/teams.h>
@@ -46,6 +48,9 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_Armor = 0;
 	m_TriggeredEvents7 = 0;
 	m_StrongWeakId = 0;
+	m_HoHp = 0;
+	m_HoFallAirVelY = 0.0f;
+	m_HoFallWasGrounded = true;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -119,6 +124,9 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 
 	TrySetRescue(RESCUEMODE_MANUAL);
 	Server()->StartRecord(m_pPlayer->GetCid());
+
+	HoHpReset(this);
+	HoFallDamageReset(this);
 
 	int Team = GameServer()->m_aTeamMapping[m_pPlayer->GetCid()];
 
@@ -945,6 +953,12 @@ void CCharacter::TickDeferred()
 	bool StuckAfterQuant = Collision()->TestBox(m_Core.m_Pos, CCharacterCore::PhysicalSizeVec2());
 	m_Pos = m_Core.m_Pos;
 
+	// Independent fall HP: use pre-move vertical speed as impact velocity.
+	if(m_Alive && !m_Paused && !m_pPlayer->m_HoFlyMode)
+		HoFallDamageAfterMove(this, StartVel.y);
+	if(!m_Alive)
+		return;
+
 	if(!StuckBefore && (StuckAfterMove || StuckAfterQuant))
 	{
 		// Hackish solution to get rid of strict-aliasing warning
@@ -1527,16 +1541,40 @@ void CCharacter::HandleBroadcast()
 		GameServer()->SendBroadcast(aBroadcast, m_pPlayer->GetCid());
 		m_LastTimeCpBroadcasted = m_LastTimeCp;
 		m_LastBroadcast = Server()->Tick();
+		return;
 	}
-	else if((m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_BROADCAST || m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_GAMETIMER_AND_BROADCAST) && m_DDRaceState == ERaceState::STARTED && m_LastBroadcast + Server()->TickSpeed() * g_Config.m_SvTimeInBroadcastInterval <= Server()->Tick())
+
+	const bool ShowRaceTimer = (m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_BROADCAST || m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_GAMETIMER_AND_BROADCAST) && m_DDRaceState == ERaceState::STARTED;
+	const bool ShowHoHp = HoHpShouldBroadcast(m_pPlayer);
+	if(!ShowRaceTimer && !ShowHoHp)
+		return;
+
+	if(m_LastBroadcast + Server()->TickSpeed() * g_Config.m_SvTimeInBroadcastInterval > Server()->Tick())
+		return;
+
+	char aBuf[128];
+	aBuf[0] = '\0';
+
+	if(ShowHoHp)
+		HoHpFormatBroadcast(this, aBuf, sizeof(aBuf));
+
+	if(ShowRaceTimer)
 	{
-		char aBuf[32];
+		char aTime[32];
 		int Time = (int64_t)100 * ((float)(Server()->Tick() - m_StartTime) / ((float)Server()->TickSpeed()));
-		str_time(Time, ETimeFormat::HOURS, aBuf, sizeof(aBuf));
-		GameServer()->SendBroadcast(aBuf, m_pPlayer->GetCid(), false);
+		str_time(Time, ETimeFormat::HOURS, aTime, sizeof(aTime));
+		if(aBuf[0])
+		{
+			str_append(aBuf, " | ");
+			str_append(aBuf, aTime);
+		}
+		else
+			str_copy(aBuf, aTime);
 		m_LastTimeCpBroadcasted = m_LastTimeCp;
-		m_LastBroadcast = Server()->Tick();
 	}
+
+	GameServer()->SendBroadcast(aBuf, m_pPlayer->GetCid(), false);
+	m_LastBroadcast = Server()->Tick();
 }
 
 void CCharacter::HandleSkippableTiles(int Index)

@@ -2977,6 +2977,10 @@ if(SERVER)
     gamemodes/mod.h
     gameworld.cpp
     gameworld.h
+    hoam/falldamage.cpp
+    hoam/falldamage.h
+    hoam/hp.cpp
+    hoam/hp.h
     hoam/portal.cpp
     hoam/portal.h
     interactions.cpp

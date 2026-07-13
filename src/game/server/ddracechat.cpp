@@ -12,6 +12,7 @@
 #include <game/mapitems.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamemodes/ddnet.h>
+#include <game/server/hoam/hp.h>
 #include <game/server/teams.h>
 #include <game/team_state.h>
 #include <game/teamscore.h>
@@ -2218,6 +2219,32 @@ void CGameContext::ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData
 	else
 		str_format(aBuf, sizeof(aBuf), "Portal gun: on (PORTAL %d)", pPlayer->m_HoLaserMode);
 	pSelf->SendChatTarget(ClientId, aBuf);
+}
+
+void CGameContext::ConHoHp(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+		return;
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pResult->NumArguments() > 0)
+		pPlayer->m_HoHpBroadcast = pResult->GetInteger(0) != 0;
+	else
+		pPlayer->m_HoHpBroadcast = !pPlayer->m_HoHpBroadcast;
+
+	if(pPlayer->m_HoHpBroadcast)
+	{
+		pSelf->SendChatTarget(ClientId, "HP broadcast: on");
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+			HoHpSendBroadcast(pChr);
+	}
+	else
+	{
+		pSelf->SendChatTarget(ClientId, "HP broadcast: off");
+		pSelf->SendBroadcast("", ClientId, false);
+	}
 }
 
 void CGameContext::ConPracticeJetpack(IConsole::IResult *pResult, void *pUserData)

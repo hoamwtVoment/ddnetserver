@@ -114,6 +114,8 @@ public:
 	vec2 m_HoFlyRemainder;
 	int m_HoLaserMode;
 	int m_HoLastPortalMode;
+	// Independent HP broadcast (default on); toggle with /hp
+	bool m_HoHpBroadcast;
 
 	// network latency calculations
 	struct
