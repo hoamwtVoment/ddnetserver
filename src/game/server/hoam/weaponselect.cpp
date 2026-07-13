@@ -87,6 +87,8 @@ namespace
 			pOut[N++] = {HO_WPNMODE_LASER_PORTAL2, POWERUP_HEALTH, 0, "Portal 2", "Place portal exit (laser)"};
 		if(N < Max)
 			pOut[N++] = {HO_WPNMODE_LASER_CANNON, POWERUP_WEAPON, WEAPON_LASER, "Cannon", "Hold fire: continuous laser beam (no bounce)"};
+		if(N < Max)
+			pOut[N++] = {HO_WPNMODE_LASER_CANNON_LOCK, POWERUP_WEAPON, WEAPON_LASER, "Cannon Lock", "Hold fire: auto-aim nearest to crosshair (blocked by first player)"};
 		(void)pPlayer;
 		return N;
 	}
@@ -212,13 +214,15 @@ void HoWeaponSelectSetActiveMode(CPlayer *pPlayer, int WeaponSlot, int ModeId)
 	}
 	if(WeaponSlot == WEAPON_LASER)
 	{
-		// 0 classic, 1 portal1, 2 portal2, 3 laser cannon
+		// 0 classic, 1 portal1, 2 portal2, 3 cannon, 4 cannon lock
 		const int PrevMode = pPlayer->m_HoLaserMode;
 		pPlayer->m_HoLaserMode = ModeId;
 		if(ModeId == HO_WPNMODE_LASER_PORTAL1 || ModeId == HO_WPNMODE_LASER_PORTAL2)
 			pPlayer->m_HoLastPortalMode = ModeId;
-		// Refresh client tunings when entering/leaving cannon (laser_reach suppress).
-		if(PrevMode != ModeId && (PrevMode == HO_WPNMODE_LASER_CANNON || ModeId == HO_WPNMODE_LASER_CANNON))
+		// Refresh client tunings when entering/leaving any cannon mode (laser_reach suppress).
+		const bool PrevCannon = PrevMode == HO_WPNMODE_LASER_CANNON || PrevMode == HO_WPNMODE_LASER_CANNON_LOCK;
+		const bool NextCannon = ModeId == HO_WPNMODE_LASER_CANNON || ModeId == HO_WPNMODE_LASER_CANNON_LOCK;
+		if(PrevMode != ModeId && (PrevCannon || NextCannon))
 		{
 			if(CCharacter *pChr = pPlayer->GetCharacter())
 				pChr->GameServer()->SendTuningParams(pPlayer->GetCid(), pChr->m_TuneZone);

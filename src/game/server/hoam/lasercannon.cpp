@@ -31,14 +31,30 @@ namespace
 	{
 		return std::max(0, g_Config.m_HoLasercannonDamage);
 	}
+
+	int LaserModeOf(const CPlayer *pPlayer)
+	{
+		if(!pPlayer)
+			return HO_WPNMODE_VANILLA;
+		const int Mode = HoWeaponSelectActiveMode(pPlayer, WEAPON_LASER);
+		if(Mode == HO_WPNMODE_LASER_CANNON || Mode == HO_WPNMODE_LASER_CANNON_LOCK)
+			return Mode;
+		// Legacy field may still hold mode when set via older paths.
+		if(pPlayer->m_HoLaserMode == HO_WPNMODE_LASER_CANNON || pPlayer->m_HoLaserMode == HO_WPNMODE_LASER_CANNON_LOCK)
+			return pPlayer->m_HoLaserMode;
+		return HO_WPNMODE_VANILLA;
+	}
 }
 
 bool HoLaserCannonModeActive(const CPlayer *pPlayer)
 {
-	if(!pPlayer)
-		return false;
-	return HoWeaponSelectActiveMode(pPlayer, WEAPON_LASER) == HO_WPNMODE_LASER_CANNON ||
-	       pPlayer->m_HoLaserMode == HO_WPNMODE_LASER_CANNON;
+	const int Mode = LaserModeOf(pPlayer);
+	return Mode == HO_WPNMODE_LASER_CANNON || Mode == HO_WPNMODE_LASER_CANNON_LOCK;
+}
+
+bool HoLaserCannonLockModeActive(const CPlayer *pPlayer)
+{
+	return LaserModeOf(pPlayer) == HO_WPNMODE_LASER_CANNON_LOCK;
 }
 
 CHoLaserCannonBeam::CHoLaserCannonBeam(CGameWorld *pGameWorld, int Owner) :
@@ -95,25 +111,82 @@ bool CHoLaserCannonBeam::OwnerStillFiring()
 	return true;
 }
 
+CCharacter *CHoLaserCannonBeam::FindLockTarget(CCharacter *pOwner, vec2 AimDir, float MaxRange)
+{
+	if(!pOwner || MaxRange <= 0.0f)
+		return nullptr;
+
+	CCharacter *pBest = nullptr;
+	// Higher cosine = closer to crosshair direction. Front hemisphere only (cos > 0).
+	float BestCos = 0.0f;
+	float BestDist = 0.0f;
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(i == m_Owner)
+			continue;
+		CCharacter *pChr = GameServer()->GetPlayerChar(i);
+		if(!pChr || !pChr->IsAlive())
+			continue;
+		if(!pOwner->CanCollide(i))
+			continue;
+		if(pOwner->LaserHitDisabled())
+			continue;
+
+		const vec2 Delta = pChr->GetPos() - pOwner->GetPos();
+		const float Dist = length(Delta);
+		if(Dist < 1.0f || Dist > MaxRange)
+			continue;
+
+		const float Cos = dot(Delta / Dist, AimDir);
+		if(Cos <= 0.0f)
+			continue;
+
+		// Prefer higher aim alignment; on near-equal angle pick the nearer tee.
+		if(!pBest || Cos > BestCos + 0.0001f || (Cos >= BestCos - 0.0001f && Dist < BestDist))
+		{
+			BestCos = Cos;
+			BestDist = Dist;
+			pBest = pChr;
+		}
+	}
+
+	return pBest;
+}
+
 void CHoLaserCannonBeam::UpdateBeam()
 {
 	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
 	if(!pOwner)
 		return;
 
+	CPlayer *pPlayer = pOwner->GetPlayer();
 	vec2 Target((float)pOwner->Core()->m_Input.m_TargetX, (float)pOwner->Core()->m_Input.m_TargetY);
 	if(Target == vec2(0.0f, 0.0f))
 		Target = vec2(0.0f, -1.0f);
-	const vec2 Dir = normalize(Target);
+	vec2 Dir = normalize(Target);
+
+	const float Energy = CannonLength();
+
+	// Auto-lock: steer beam toward the living player nearest the crosshair direction.
+	// Path blocking is still handled below (first character along the ray wins).
+	if(pPlayer && HoLaserCannonLockModeActive(pPlayer))
+	{
+		if(CCharacter *pLock = FindLockTarget(pOwner, Dir, Energy))
+		{
+			const vec2 ToLock = pLock->GetPos() - pOwner->GetPos();
+			if(length(ToLock) > 0.001f)
+				Dir = normalize(ToLock);
+		}
+	}
 
 	const vec2 Start = pOwner->GetPos() + Dir * pOwner->GetProximityRadius() * 0.75f;
-	const float Energy = CannonLength();
 	vec2 End = Start + Dir * Energy;
 
 	// Wall stop — no bounce / reflection.
 	GameServer()->Collision()->IntersectLine(Start, End, nullptr, &End);
 
-	// First character along beam.
+	// First character along beam (blocker or locked target).
 	vec2 HitAt;
 	CCharacter *pHit = GameWorld()->IntersectCharacter(Start, End, 0.0f, HitAt, pOwner, m_Owner);
 	if(pHit && pHit->IsAlive() && pOwner->CanCollide(pHit->GetPlayer()->GetCid()) && !pOwner->LaserHitDisabled())

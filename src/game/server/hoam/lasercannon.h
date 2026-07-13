@@ -6,7 +6,8 @@
 class CCharacter;
 class CPlayer;
 
-// Continuous laser-cannon beam (laser slot mode). No bounce; length = ho_lasercannon_length tiles.
+// Continuous laser-cannon beam (laser slot modes). No bounce; length = ho_lasercannon_length tiles.
+// Modes: free-aim cannon, or auto-lock (aim nearest-to-crosshair; first body along ray still blocks).
 class CHoLaserCannonBeam final : public CEntity
 {
 public:
@@ -23,6 +24,8 @@ public:
 private:
 	void UpdateBeam();
 	bool OwnerStillFiring();
+	// Auto-lock: character nearest to aim direction within range (nullptr = free aim).
+	CCharacter *FindLockTarget(CCharacter *pOwner, vec2 AimDir, float MaxRange);
 
 	int m_Owner;
 	vec2 m_From;
@@ -33,7 +36,9 @@ private:
 
 // Call each character weapon tick: maintain beam while holding fire in cannon mode.
 void HoLaserCannonTickCharacter(CCharacter *pChr);
-// True if this player currently has laser cannon selected as laser mode.
+// True if this player has free-aim or auto-lock laser cannon selected.
 bool HoLaserCannonModeActive(const CPlayer *pPlayer);
+// True if auto-lock cannon mode is selected.
+bool HoLaserCannonLockModeActive(const CPlayer *pPlayer);
 
 #endif
