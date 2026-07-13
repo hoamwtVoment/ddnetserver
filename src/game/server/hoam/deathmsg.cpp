@@ -15,17 +15,17 @@
 // Combat tag duration for "doomed to fall" / "whilst trying to escape" lines.
 static constexpr int HO_LAST_HIT_SECS = 8;
 
-// DDRace shotgun is the freeze laser, not a pellet gun.
-// pAttacker: last recent hitter (hammer etc.), for MC escape/doomed lines; may be null.
+// Java Edition ZH death messages (MC wiki localization), EN MC vanilla style.
+// pAttacker: recent combat tag (hammer etc.); may be null.
 static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, const char *pVictim, const char *pKiller, const char *pAttacker, char *pBuf, int BufSize)
 {
+	// death.fell.accident.generic / death.fell.assist
 	if(DeathCause == HO_DEATH_FALL)
 	{
 		if(pAttacker)
 		{
-			// MC: was doomed to fall by %s / 被%s推下了悬崖
 			if(Lang == HO_LANG_ZH)
-				str_format(pBuf, BufSize, "%s 被 %s 推下了悬崖", pVictim, pAttacker);
+				str_format(pBuf, BufSize, "%s 因为 %s 注定要摔死", pVictim, pAttacker);
 			else
 				str_format(pBuf, BufSize, "%s was doomed to fall by %s", pVictim, pAttacker);
 		}
@@ -36,11 +36,11 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 		return;
 	}
 
+	// death.attack.flyIntoWall / .player
 	if(DeathCause == HO_DEATH_KINETIC)
 	{
 		if(pAttacker)
 		{
-			// MC: experienced kinetic energy whilst trying to escape %s
 			if(Lang == HO_LANG_ZH)
 				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时感受到了动能", pVictim, pAttacker);
 			else
@@ -53,31 +53,32 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 		return;
 	}
 
+	// death.attack.outsideBorder / .player (map layer clip)
 	if(DeathCause == HO_DEATH_BORDER)
 	{
 		if(pAttacker)
 		{
 			if(Lang == HO_LANG_ZH)
-				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时掉出了地图", pVictim, pAttacker);
+				str_format(pBuf, BufSize, "%s 在与 %s 战斗时脱离了这个世界", pVictim, pAttacker);
 			else
-				str_format(pBuf, BufSize, "%s fell out of the map whilst trying to escape %s", pVictim, pAttacker);
+				str_format(pBuf, BufSize, "%s left the confines of this world whilst fighting %s", pVictim, pAttacker);
 		}
 		else if(Lang == HO_LANG_ZH)
-			str_format(pBuf, BufSize, "%s 掉出了地图", pVictim);
+			str_format(pBuf, BufSize, "%s 脱离了这个世界", pVictim);
 		else
-			str_format(pBuf, BufSize, "%s fell out of the map", pVictim);
+			str_format(pBuf, BufSize, "%s left the confines of this world", pVictim);
 		return;
 	}
 
+	// Spikes (TILE_DEATH); cactus-like combat tag uses 试图逃离
 	if(DeathCause == HO_DEATH_SPIKE)
 	{
 		if(pAttacker)
 		{
-			// MC cactus style: whilst trying to escape
 			if(Lang == HO_LANG_ZH)
 				str_format(pBuf, BufSize, "%s 在试图逃离 %s 时被刺扎死了", pVictim, pAttacker);
 			else
-				str_format(pBuf, BufSize, "%s was impaled on spikes whilst trying to escape %s", pVictim, pAttacker);
+				str_format(pBuf, BufSize, "%s walked into spikes whilst trying to escape %s", pVictim, pAttacker);
 		}
 		else if(Lang == HO_LANG_ZH)
 			str_format(pBuf, BufSize, "%s 被刺扎死了", pVictim);
@@ -86,6 +87,8 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 		return;
 	}
 
+	// death.attack.genericKill / .player  ( /kill )
+	// death.attack.generic
 	if(Self || !pKiller)
 	{
 		if(Lang == HO_LANG_ZH)
@@ -93,10 +96,11 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 			switch(Weapon)
 			{
 			case WEAPON_SELF:
-				str_format(pBuf, BufSize, "%s 死了", pVictim);
+				// genericKill
+				str_format(pBuf, BufSize, "%s 被杀死了", pVictim);
 				break;
 			case WEAPON_WORLD:
-				str_format(pBuf, BufSize, "%s 被世界杀死了", pVictim);
+				str_format(pBuf, BufSize, "%s 死了", pVictim);
 				break;
 			default:
 				str_format(pBuf, BufSize, "%s 死了", pVictim);
@@ -108,10 +112,10 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 			switch(Weapon)
 			{
 			case WEAPON_SELF:
-				str_format(pBuf, BufSize, "%s died", pVictim);
+				str_format(pBuf, BufSize, "%s was killed", pVictim);
 				break;
 			case WEAPON_WORLD:
-				str_format(pBuf, BufSize, "%s was slain by the world", pVictim);
+				str_format(pBuf, BufSize, "%s died", pVictim);
 				break;
 			default:
 				str_format(pBuf, BufSize, "%s died", pVictim);
