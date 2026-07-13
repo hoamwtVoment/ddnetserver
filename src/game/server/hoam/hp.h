@@ -2,10 +2,17 @@
 #define GAME_SERVER_HOAM_HP_H
 
 class CCharacter;
+class CGameContext;
 class CPlayer;
 
 // Independent server HP system (not Teeworlds m_Health / TakeDamage).
 // Fall damage and future damage sources should call HoHpTakeDamage / HoHpHeal.
+
+// How long the second-line delta stays visible (seconds), including after death.
+enum
+{
+	HO_HP_DELTA_VISIBLE_SECS = 3,
+};
 
 int HoHpMax();
 void HoHpReset(CCharacter *pChr);
@@ -23,5 +30,12 @@ void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize);
 void HoHpSendBroadcast(CCharacter *pChr);
 // Record delta for the second broadcast line (negative = damage, positive = heal).
 void HoHpNoteDelta(CCharacter *pChr, int Delta);
+
+// After a lethal hit: keep the same broadcast until the remaining delta timer ends.
+void HoHpArmPostDeathBroadcast(CCharacter *pChr);
+// Call from CPlayer::Tick: refresh / expire post-death HP line for remaining delta time.
+void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer);
+// Clear post-death hold (respawn / /hp off).
+void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearBroadcast);
 
 #endif

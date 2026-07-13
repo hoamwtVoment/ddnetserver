@@ -2243,6 +2243,7 @@ void CGameContext::ConHoHp(IConsole::IResult *pResult, void *pUserData)
 	else
 	{
 		pSelf->SendChatTarget(ClientId, "HP broadcast: off");
+		HoHpClearPostDeath(pSelf, pPlayer, true);
 		pSelf->SendBroadcast("", ClientId, false);
 	}
 }

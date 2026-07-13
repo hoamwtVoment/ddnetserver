@@ -118,6 +118,9 @@ public:
 	bool m_HoHpBroadcast;
 	// Second broadcast line for last damage/heal delta (default on); toggle with /hpdmg
 	bool m_HoHpDeltaBroadcast;
+	// After lethal HP damage: hold last HP broadcast until this tick (remaining delta time)
+	int m_HoHpPostDeathUntil;
+	char m_aHoHpPostDeathMsg[96];
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
 

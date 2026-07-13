@@ -5,6 +5,7 @@
 #include "entities/character.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
+#include "hoam/hp.h"
 #include "hoam/lang.h"
 #include "score.h"
 
@@ -96,6 +97,8 @@ void CPlayer::Reset()
 	m_HoLastPortalMode = 1;
 	m_HoHpBroadcast = true;
 	m_HoHpDeltaBroadcast = true;
+	m_HoHpPostDeathUntil = 0;
+	m_aHoHpPostDeathMsg[0] = '\0';
 	HoLangInitPlayer(this);
 
 	m_SendVoteIndex = -1;
@@ -189,6 +192,9 @@ void CPlayer::Tick()
 
 	if(!Server()->ClientIngame(m_ClientId))
 		return;
+
+	// Hold lethal HP/delta broadcast for the remaining delta visibility time.
+	HoHpPlayerTick(GameServer(), this);
 
 	if(m_ChatScore > 0)
 		m_ChatScore--;

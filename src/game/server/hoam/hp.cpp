@@ -12,12 +12,21 @@
 
 #include <algorithm>
 
-// How long the second-line delta stays visible (seconds).
-static constexpr int HO_HP_DELTA_VISIBLE_SECS = 3;
-
 int HoHpMax()
 {
 	return std::max(0, g_Config.m_HoHp);
+}
+
+void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearBroadcast)
+{
+	if(!pPlayer)
+		return;
+
+	if(ClearBroadcast && pPlayer->m_HoHpPostDeathUntil > 0 && pGameServer)
+		pGameServer->SendBroadcast("", pPlayer->GetCid(), false);
+
+	pPlayer->m_HoHpPostDeathUntil = 0;
+	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 }
 
 void HoHpReset(CCharacter *pChr)
@@ -28,6 +37,10 @@ void HoHpReset(CCharacter *pChr)
 	pChr->m_HoHp = HoHpMax();
 	pChr->m_HoHpLastDelta = 0;
 	pChr->m_HoHpLastDeltaTick = 0;
+
+	// Respawn: stop holding the death HP line.
+	if(CPlayer *pPlayer = pChr->GetPlayer())
+		HoHpClearPostDeath(pChr->GameServer(), pPlayer, true);
 }
 
 void HoHpNoteDelta(CCharacter *pChr, int Delta)
@@ -44,6 +57,13 @@ bool HoHpShouldBroadcast(const CPlayer *pPlayer)
 	return pPlayer && pPlayer->m_HoHpBroadcast && HoHpMax() > 0;
 }
 
+static int HoHpDeltaExpireTick(CCharacter *pChr)
+{
+	if(!pChr || pChr->m_HoHpLastDelta == 0 || pChr->m_HoHpLastDeltaTick <= 0)
+		return 0;
+	return pChr->m_HoHpLastDeltaTick + pChr->GameServer()->Server()->TickSpeed() * HO_HP_DELTA_VISIBLE_SECS;
+}
+
 static bool HoHpDeltaVisible(CCharacter *pChr, const CPlayer *pPlayer)
 {
 	if(!pChr || !pPlayer || !pPlayer->m_HoHpDeltaBroadcast)
@@ -52,8 +72,7 @@ static bool HoHpDeltaVisible(CCharacter *pChr, const CPlayer *pPlayer)
 		return false;
 
 	const int Tick = pChr->GameServer()->Server()->Tick();
-	const int Speed = pChr->GameServer()->Server()->TickSpeed();
-	return Tick - pChr->m_HoHpLastDeltaTick <= Speed * HO_HP_DELTA_VISIBLE_SECS;
+	return Tick <= HoHpDeltaExpireTick(pChr);
 }
 
 void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize)
@@ -88,6 +107,53 @@ void HoHpSendBroadcast(CCharacter *pChr)
 	char aBuf[96];
 	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
 	pChr->GameServer()->SendBroadcast(aBuf, pPlayer->GetCid(), false);
+}
+
+void HoHpArmPostDeathBroadcast(CCharacter *pChr)
+{
+	if(!pChr)
+		return;
+
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!HoHpShouldBroadcast(pPlayer))
+		return;
+
+	// Continue whatever is left of the delta visibility window — do not restart the timer.
+	const int Expire = HoHpDeltaExpireTick(pChr);
+	const int Now = pChr->GameServer()->Server()->Tick();
+	if(Expire <= Now)
+		return;
+
+	char aBuf[96];
+	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
+	if(!aBuf[0])
+		return;
+
+	str_copy(pPlayer->m_aHoHpPostDeathMsg, aBuf);
+	pPlayer->m_HoHpPostDeathUntil = Expire;
+	// Message was already sent by HoHpSendBroadcast; keep it until Expire.
+}
+
+void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
+{
+	if(!pGameServer || !pPlayer || pPlayer->m_HoHpPostDeathUntil <= 0)
+		return;
+
+	IServer *pServer = pGameServer->Server();
+	const int Now = pServer->Tick();
+
+	if(Now < pPlayer->m_HoHpPostDeathUntil)
+	{
+		// Refresh once per second so other broadcasts cannot wipe it for long.
+		if(Now % pServer->TickSpeed() == 0 && pPlayer->m_aHoHpPostDeathMsg[0])
+			pGameServer->SendBroadcast(pPlayer->m_aHoHpPostDeathMsg, pPlayer->GetCid(), false);
+		return;
+	}
+
+	// Remaining time finished: clear the line.
+	pGameServer->SendBroadcast("", pPlayer->GetCid(), false);
+	pPlayer->m_HoHpPostDeathUntil = 0;
+	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 }
 
 bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback, int DeathCause)
@@ -133,6 +199,8 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 	if(pChr->m_HoHp <= 0)
 	{
 		pChr->m_HoHp = 0;
+		if(ShowFeedback)
+			HoHpArmPostDeathBroadcast(pChr);
 		pChr->Die(Killer, Weapon);
 		return true;
 	}
