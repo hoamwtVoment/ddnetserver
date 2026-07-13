@@ -1558,7 +1558,7 @@ void CCharacter::HandleBroadcast()
 		return;
 	}
 
-	// Death-hold owns the HUD until the remaining damage-line time ends.
+	// Death-hold owns the HUD; HoHpPlayerTick refreshes it at 1/s.
 	if(HoHpPostDeathActive(m_pPlayer, Server()->Tick()))
 		return;
 
@@ -1569,6 +1569,14 @@ void CCharacter::HandleBroadcast()
 
 	if(m_LastBroadcast + Server()->TickSpeed() * g_Config.m_SvTimeInBroadcastInterval > Server()->Tick())
 		return;
+
+	// HP-only: go through rate-limited helper so damage + periodic stay at 1/s.
+	if(ShowHoHp && !ShowRaceTimer)
+	{
+		HoHpSendBroadcast(this);
+		m_LastBroadcast = Server()->Tick();
+		return;
+	}
 
 	char aBuf[128];
 	aBuf[0] = '\0';
@@ -1583,7 +1591,6 @@ void CCharacter::HandleBroadcast()
 		str_time(Time, ETimeFormat::HOURS, aTime, sizeof(aTime));
 		if(aBuf[0])
 		{
-			// Keep HP multi-line layout; put race timer on its own line.
 			str_append(aBuf, "\n");
 			str_append(aBuf, aTime);
 		}
@@ -1592,7 +1599,16 @@ void CCharacter::HandleBroadcast()
 		m_LastTimeCpBroadcasted = m_LastTimeCp;
 	}
 
-	// Important so HP is not dropped after other important broadcasts.
+	// Combined HP+timer line: also respect HP send rate limit via last-broadcast tick.
+	if(ShowHoHp)
+	{
+		const int Now = Server()->Tick();
+		const int Interval = Server()->TickSpeed() * std::max(1, g_Config.m_SvTimeInBroadcastInterval);
+		if(m_pPlayer->m_HoHpLastBroadcastTick > 0 && Now - m_pPlayer->m_HoHpLastBroadcastTick < Interval)
+			return;
+		m_pPlayer->m_HoHpLastBroadcastTick = Now;
+	}
+
 	GameServer()->SendBroadcast(aBuf, m_pPlayer->GetCid(), true);
 	m_LastBroadcast = Server()->Tick();
 }

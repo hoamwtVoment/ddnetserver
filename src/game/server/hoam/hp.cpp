@@ -12,20 +12,40 @@
 
 #include <algorithm>
 
-// Refresh post-death / held HP line this often (ticks). Avoids every-tick spam.
-static constexpr int HO_HP_HOLD_REFRESH_TICKS = 5;
-
 int HoHpMax()
 {
 	return std::max(0, g_Config.m_HoHp);
 }
 
-static void HoHpSendToPlayer(CGameContext *pGameServer, CPlayer *pPlayer, const char *pText)
+static int HoHpBroadcastIntervalTicks(IServer *pServer)
+{
+	// Same cadence as normal HP / race timer broadcast (default 1 second).
+	const int Sec = std::max(1, g_Config.m_SvTimeInBroadcastInterval);
+	return pServer->TickSpeed() * Sec;
+}
+
+// Rate-limited send. Force=true still respects the 1s interval (prevents damage spam).
+// Returns whether a packet was sent.
+static bool HoHpSendToPlayer(CGameContext *pGameServer, CPlayer *pPlayer, const char *pText, bool Force = false)
 {
 	if(!pGameServer || !pPlayer || !pText)
-		return;
+		return false;
+
+	IServer *pServer = pGameServer->Server();
+	const int Now = pServer->Tick();
+	const int Interval = HoHpBroadcastIntervalTicks(pServer);
+
+	// Allow the very first send always; afterwards at most once per interval.
+	if(pPlayer->m_HoHpLastBroadcastTick > 0 && Now - pPlayer->m_HoHpLastBroadcastTick < Interval)
+	{
+		(void)Force;
+		return false;
+	}
+
+	pPlayer->m_HoHpLastBroadcastTick = Now;
 	// Important so other non-important broadcasts cannot drop HP lines.
 	pGameServer->SendBroadcast(pText, pPlayer->GetCid(), true);
+	return true;
 }
 
 bool HoHpPostDeathActive(const CPlayer *pPlayer, int NowTick)
@@ -52,7 +72,6 @@ void HoHpReset(CCharacter *pChr)
 		return;
 
 	pChr->m_HoHp = HoHpMax();
-	// Keep last delta ticks only if a post-death hold is still showing; otherwise reset.
 	CPlayer *pPlayer = pChr->GetPlayer();
 	CGameContext *pGameServer = pChr->GameServer();
 	if(!pPlayer || !pGameServer)
@@ -61,7 +80,7 @@ void HoHpReset(CCharacter *pChr)
 	const int Now = pGameServer->Server()->Tick();
 	if(HoHpPostDeathActive(pPlayer, Now))
 	{
-		// Instant / early respawn: gameplay HP is full, but HUD keeps death line until hold ends.
+		// Instant / early respawn: gameplay HP is full, HUD keeps death line until hold ends.
 		pChr->m_HoHpLastDelta = 0;
 		pChr->m_HoHpLastDeltaTick = 0;
 		return;
@@ -70,7 +89,8 @@ void HoHpReset(CCharacter *pChr)
 	pChr->m_HoHpLastDelta = 0;
 	pChr->m_HoHpLastDeltaTick = 0;
 	HoHpClearPostDeath(pGameServer, pPlayer, false);
-	// Defer one tick so join/welcome broadcasts cannot permanently cover the first HP line.
+	// Reset rate limit so spawn HP can show immediately.
+	pPlayer->m_HoHpLastBroadcastTick = 0;
 	pPlayer->m_HoHpPendingSpawnBroadcast = true;
 	HoHpSendBroadcast(pChr);
 }
@@ -134,7 +154,6 @@ void HoHpSendBroadcast(CCharacter *pChr)
 	if(!HoHpShouldBroadcast(pPlayer))
 		return;
 
-	// Death-hold owns the HUD until the remaining delta time ends.
 	const int Now = pChr->GameServer()->Server()->Tick();
 	if(HoHpPostDeathActive(pPlayer, Now))
 		return;
@@ -166,6 +185,8 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 
 	str_copy(pPlayer->m_aHoHpPostDeathMsg, aBuf);
 	pPlayer->m_HoHpPostDeathUntil = Expire;
+	// Allow this death line through the rate limiter once.
+	pPlayer->m_HoHpLastBroadcastTick = 0;
 	HoHpSendToPlayer(pGameServer, pPlayer, aBuf);
 }
 
@@ -180,11 +201,9 @@ void HoHpShowOverkillDeath(CCharacter *pChr)
 		return;
 
 	const int Now = pGameServer->Server()->Tick();
-	// Real HP damage (fall / wall) already armed the hold — keep that number.
 	if(HoHpPostDeathActive(pPlayer, Now))
 		return;
 
-	// Cosmetic overkill for instant kills: suicide, kill_pl, border, world, rcon, etc.
 	constexpr int Overkill = 2147483647;
 	pChr->m_HoHp = 0;
 	pChr->m_HoHpLastDelta = -Overkill;
@@ -200,7 +219,6 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 	IServer *pServer = pGameServer->Server();
 	const int Now = pServer->Tick();
 
-	// Pending full-HP show after join (welcome broadcasts may run first).
 	if(pPlayer->m_HoHpPendingSpawnBroadcast && HoHpShouldBroadcast(pPlayer))
 	{
 		if(CCharacter *pChr = pPlayer->GetCharacter())
@@ -208,6 +226,8 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 			if(pChr->IsAlive() && !HoHpPostDeathActive(pPlayer, Now))
 			{
 				pPlayer->m_HoHpPendingSpawnBroadcast = false;
+				// Force through rate limit once for join.
+				pPlayer->m_HoHpLastBroadcastTick = 0;
 				HoHpSendBroadcast(pChr);
 			}
 		}
@@ -218,19 +238,21 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 
 	if(Now <= pPlayer->m_HoHpPostDeathUntil)
 	{
-		// Keep death line on top even if the player already respawned.
-		if(pPlayer->m_aHoHpPostDeathMsg[0] && (Now % HO_HP_HOLD_REFRESH_TICKS) == 0)
+		// Keep death line at the same 1/s cadence as normal HP broadcast.
+		if(pPlayer->m_aHoHpPostDeathMsg[0])
 			HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
 		return;
 	}
 
-	// Hold finished: restore normal full HP if alive.
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 	if(CCharacter *pChr = pPlayer->GetCharacter())
 	{
 		if(pChr->IsAlive())
+		{
+			pPlayer->m_HoHpLastBroadcastTick = 0;
 			HoHpSendBroadcast(pChr);
+		}
 	}
 }
 
@@ -279,11 +301,11 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 		{
 			HoHpArmPostDeathBroadcast(pChr);
 			pChr->Die(Killer, Weapon);
-			if(pPlayer->m_HoHpPostDeathUntil > 0 && pPlayer->m_aHoHpPostDeathMsg[0])
-				HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
+			// Do not send again here — Arm already sent once (rate-limited thereafter).
 			return true;
 		}
 
+		// Non-lethal: at most one network update per second (same as idle HP).
 		HoHpSendBroadcast(pChr);
 	}
 	else if(Lethal)
