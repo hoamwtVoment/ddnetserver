@@ -116,6 +116,8 @@ public:
 	int m_HoLastPortalMode;
 	// Independent HP broadcast (default on); toggle with /hp
 	bool m_HoHpBroadcast;
+	// Second broadcast line for last damage/heal delta (default on); toggle with /hpdmg
+	bool m_HoHpDeltaBroadcast;
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
 

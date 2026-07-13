@@ -50,6 +50,8 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_TriggeredEvents7 = 0;
 	m_StrongWeakId = 0;
 	m_HoHp = 0;
+	m_HoHpLastDelta = 0;
+	m_HoHpLastDeltaTick = 0;
 	m_HoFallAirVelY = 0.0f;
 	m_HoFallWasGrounded = true;
 	m_HoDeathCause = 0;
@@ -1573,7 +1575,8 @@ void CCharacter::HandleBroadcast()
 		str_time(Time, ETimeFormat::HOURS, aTime, sizeof(aTime));
 		if(aBuf[0])
 		{
-			str_append(aBuf, " | ");
+			// Keep HP multi-line layout; put race timer on its own line.
+			str_append(aBuf, "\n");
 			str_append(aBuf, aTime);
 		}
 		else

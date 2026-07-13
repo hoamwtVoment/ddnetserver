@@ -12,6 +12,9 @@
 
 #include <algorithm>
 
+// How long the second-line delta stays visible (seconds).
+static constexpr int HO_HP_DELTA_VISIBLE_SECS = 3;
+
 int HoHpMax()
 {
 	return std::max(0, g_Config.m_HoHp);
@@ -23,6 +26,17 @@ void HoHpReset(CCharacter *pChr)
 		return;
 
 	pChr->m_HoHp = HoHpMax();
+	pChr->m_HoHpLastDelta = 0;
+	pChr->m_HoHpLastDeltaTick = 0;
+}
+
+void HoHpNoteDelta(CCharacter *pChr, int Delta)
+{
+	if(!pChr || Delta == 0)
+		return;
+
+	pChr->m_HoHpLastDelta = Delta;
+	pChr->m_HoHpLastDeltaTick = pChr->GameServer()->Server()->Tick();
 }
 
 bool HoHpShouldBroadcast(const CPlayer *pPlayer)
@@ -30,7 +44,19 @@ bool HoHpShouldBroadcast(const CPlayer *pPlayer)
 	return pPlayer && pPlayer->m_HoHpBroadcast && HoHpMax() > 0;
 }
 
-void HoHpFormatBroadcast(const CCharacter *pChr, char *pBuf, int BufSize)
+static bool HoHpDeltaVisible(CCharacter *pChr, const CPlayer *pPlayer)
+{
+	if(!pChr || !pPlayer || !pPlayer->m_HoHpDeltaBroadcast)
+		return false;
+	if(pChr->m_HoHpLastDelta == 0 || pChr->m_HoHpLastDeltaTick <= 0)
+		return false;
+
+	const int Tick = pChr->GameServer()->Server()->Tick();
+	const int Speed = pChr->GameServer()->Server()->TickSpeed();
+	return Tick - pChr->m_HoHpLastDeltaTick <= Speed * HO_HP_DELTA_VISIBLE_SECS;
+}
+
+void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize)
 {
 	if(!pBuf || BufSize <= 0)
 		return;
@@ -41,7 +67,13 @@ void HoHpFormatBroadcast(const CCharacter *pChr, char *pBuf, int BufSize)
 		return;
 	}
 
-	str_format(pBuf, BufSize, "HP %d/%d", pChr->m_HoHp, HoHpMax());
+	// Line 1: current HP
+	// Line 2 (optional): last change, e.g. "-20" or "+10"
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(HoHpDeltaVisible(pChr, pPlayer))
+		str_format(pBuf, BufSize, "HP %d/%d\n%+d", pChr->m_HoHp, HoHpMax(), pChr->m_HoHpLastDelta);
+	else
+		str_format(pBuf, BufSize, "HP %d/%d", pChr->m_HoHp, HoHpMax());
 }
 
 void HoHpSendBroadcast(CCharacter *pChr)
@@ -53,7 +85,7 @@ void HoHpSendBroadcast(CCharacter *pChr)
 	if(!HoHpShouldBroadcast(pPlayer))
 		return;
 
-	char aBuf[64];
+	char aBuf[96];
 	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
 	pChr->GameServer()->SendBroadcast(aBuf, pPlayer->GetCid(), false);
 }
@@ -84,6 +116,8 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 	pChr->m_HoHp -= Damage;
 	if(DeathCause != 0)
 		pChr->m_HoDeathCause = DeathCause;
+
+	HoHpNoteDelta(pChr, -Damage);
 
 	if(ShowFeedback)
 	{
@@ -118,7 +152,11 @@ bool HoHpHeal(CCharacter *pChr, int Amount)
 	if(pChr->m_HoHp >= Max)
 		return false;
 
+	const int Before = pChr->m_HoHp;
 	pChr->m_HoHp = std::min(Max, pChr->m_HoHp + Amount);
+	const int Healed = pChr->m_HoHp - Before;
+	if(Healed > 0)
+		HoHpNoteDelta(pChr, Healed);
 	HoHpSendBroadcast(pChr);
-	return true;
+	return Healed > 0;
 }

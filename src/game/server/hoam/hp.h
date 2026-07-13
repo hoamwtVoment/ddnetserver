@@ -17,8 +17,11 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 bool HoHpHeal(CCharacter *pChr, int Amount);
 
 // Broadcast helpers (display is opt-out per player via /hp).
+// Second line shows last HP delta when m_HoHpDeltaBroadcast is on (default).
 bool HoHpShouldBroadcast(const CPlayer *pPlayer);
-void HoHpFormatBroadcast(const CCharacter *pChr, char *pBuf, int BufSize);
+void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize);
 void HoHpSendBroadcast(CCharacter *pChr);
+// Record delta for the second broadcast line (negative = damage, positive = heal).
+void HoHpNoteDelta(CCharacter *pChr, int Delta);
 
 #endif

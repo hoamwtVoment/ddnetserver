@@ -5045,6 +5045,7 @@ void CGameContext::RegisterChatCommands()
 	Console()->Register("portal", "?i['1'|'2']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortal, this, "Set PORTAL mode and toggle it");
 	Console()->Register("portaltoggle", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoPortalToggle, this, "Toggle your portal gun on or off");
 	Console()->Register("hp", "?i['0'|'1']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoHp, this, "Toggle independent HP broadcast display (0=off, 1=on)");
+	Console()->Register("hpdmg", "?i['0'|'1']", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoHpDmg, this, "Toggle HP damage/heal delta line in broadcast (0=off, 1=on)");
 	Console()->Register("lang", "?s[language]", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoLang, this, "Set hoam message language (auto/en/zh). No args lists languages");
 	Console()->Register("language", "?s[language]", CFGFLAG_CHAT | CFGFLAG_SERVER, ConHoLang, this, "Set hoam message language (auto/en/zh). No args lists languages");
 	Console()->Register("credits", "", CFGFLAG_CHAT | CFGFLAG_SERVER, ConCredits, this, "Shows the credits of the DDNet mod");

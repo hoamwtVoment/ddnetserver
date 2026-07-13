@@ -242,6 +242,9 @@ public:
 
 	// hoam independent HP (not Teeworlds m_Health); fall tracking for fall damage source
 	int m_HoHp;
+	// Last HP change for broadcast second line (negative damage, positive heal)
+	int m_HoHpLastDelta;
+	int m_HoHpLastDeltaTick;
 	float m_HoFallAirVelY;
 	bool m_HoFallWasGrounded;
 	// Last independent-HP death cause for Minecraft-style chat (hoam/deathmsg.h)

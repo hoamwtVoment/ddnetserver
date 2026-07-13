@@ -555,6 +555,7 @@ private:
 	static void ConHoPortal(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoPortalToggle(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoHp(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoHpDmg(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConCredits(IConsole::IResult *pResult, void *pUserData);
 	static void ConInfo(IConsole::IResult *pResult, void *pUserData);

@@ -2247,6 +2247,33 @@ void CGameContext::ConHoHp(IConsole::IResult *pResult, void *pUserData)
 	}
 }
 
+void CGameContext::ConHoHpDmg(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->m_ClientId;
+	if(!CheckClientId(ClientId) || !pSelf->m_apPlayers[ClientId])
+		return;
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pResult->NumArguments() > 0)
+		pPlayer->m_HoHpDeltaBroadcast = pResult->GetInteger(0) != 0;
+	else
+		pPlayer->m_HoHpDeltaBroadcast = !pPlayer->m_HoHpDeltaBroadcast;
+
+	if(pPlayer->m_HoHpDeltaBroadcast)
+	{
+		pSelf->SendChatTarget(ClientId, "HP damage line: on");
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+			HoHpSendBroadcast(pChr);
+	}
+	else
+	{
+		pSelf->SendChatTarget(ClientId, "HP damage line: off");
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+			HoHpSendBroadcast(pChr);
+	}
+}
+
 void CGameContext::ConPracticeJetpack(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

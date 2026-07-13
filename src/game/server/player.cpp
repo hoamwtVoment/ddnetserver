@@ -95,6 +95,7 @@ void CPlayer::Reset()
 	m_HoLaserMode = 0;
 	m_HoLastPortalMode = 1;
 	m_HoHpBroadcast = true;
+	m_HoHpDeltaBroadcast = true;
 	HoLangInitPlayer(this);
 
 	m_SendVoteIndex = -1;
