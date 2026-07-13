@@ -1640,6 +1640,7 @@ void CCharacter::HandleSkippableTiles(int Index)
 		}
 		else
 		{
+			m_HoDeathCause = HO_DEATH_SPIKE;
 			Die(m_pPlayer->GetCid(), WEAPON_WORLD);
 			return;
 		}

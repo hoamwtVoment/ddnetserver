@@ -36,9 +36,18 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 	if(DeathCause == HO_DEATH_BORDER)
 	{
 		if(Lang == HO_LANG_ZH)
-			str_format(pBuf, BufSize, "%s 掉出了这个地图", pVictim);
+			str_format(pBuf, BufSize, "%s 掉到地图外了", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s fell out of the map", pVictim);
+		return;
+	}
+
+	if(DeathCause == HO_DEATH_SPIKE)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 被刺扎死了", pVictim);
+		else
+			str_format(pBuf, BufSize, "%s was impaled on spikes", pVictim);
 		return;
 	}
 

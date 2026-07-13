@@ -14,6 +14,8 @@ enum
 	HO_DEATH_KINETIC,
 	// Left the game layer (map border / GameLayerClipped)
 	HO_DEATH_BORDER,
+	// TILE_DEATH (spikes / 刺)
+	HO_DEATH_SPIKE,
 };
 
 // Call from Die() when a kill message is sent / player actually dies.
