@@ -275,10 +275,9 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 	if(pChr->m_HoHp > Max)
 		pChr->m_HoHp = Max;
 
-	if(Damage > pChr->m_HoHp)
-		Damage = pChr->m_HoHp;
-
-	pChr->m_HoHp -= Damage;
+	// Keep full Damage for HUD overkill (e.g. mace smash). Only HP is clamped.
+	const int Applied = std::min(Damage, pChr->m_HoHp);
+	pChr->m_HoHp -= Applied;
 	if(DeathCause != 0)
 		pChr->m_HoDeathCause = DeathCause;
 
