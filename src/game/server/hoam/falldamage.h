@@ -7,8 +7,9 @@ class CCharacter;
 // Enabled by ho_falldamage; amount scaled by ho_falldamage_scale (percent).
 
 // Downward speed (vel.y) must exceed this before damage is applied on landing.
-constexpr float HO_FALL_VEL_THRESHOLD = 10.0f;
-// Base damage per unit of excess fall speed at scale 100 and ho_hp 100.
+// ~20 is above a normal ground jump landing so in-place jumps do not chip HP.
+constexpr float HO_FALL_VEL_THRESHOLD = 20.0f;
+// Base damage per unit of excess fall speed at scale 100.
 constexpr float HO_FALL_DAMAGE_PER_VEL = 5.0f;
 
 void HoFallDamageReset(CCharacter *pChr);
