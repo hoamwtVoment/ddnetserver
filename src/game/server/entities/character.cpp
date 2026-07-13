@@ -1097,6 +1097,10 @@ void CCharacter::StopRecording()
 
 void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 {
+	// Instant kills (border, /kill, kill_pl, rcon, world tiles, …) do not go through
+	// HoHpTakeDamage — still show HP 0 and a huge damage line. Fall/wall already armed.
+	HoHpShowOverkillDeath(this);
+
 	GameServer()->DeactivateHoPortals(m_pPlayer->GetCid());
 	if(Killer != WEAPON_GAME && m_SetSavePos[RESCUEMODE_AUTO])
 		GetPlayer()->m_LastDeath = m_RescueTee[RESCUEMODE_AUTO];

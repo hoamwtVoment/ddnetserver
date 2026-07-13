@@ -34,6 +34,9 @@ void HoHpNoteDelta(CCharacter *pChr, int Delta);
 
 // After a lethal hit: keep the same broadcast until the remaining delta timer ends.
 void HoHpArmPostDeathBroadcast(CCharacter *pChr);
+// Instant kills that skip HoHpTakeDamage (suicide, kill_pl, border/world, etc.):
+// show HP 0 and an overkill delta of -2147483647 for the normal hold window.
+void HoHpShowOverkillDeath(CCharacter *pChr);
 // Call from CPlayer::Tick: refresh / expire post-death HP line for remaining delta time.
 void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer);
 // Clear post-death hold (respawn / /hp off).

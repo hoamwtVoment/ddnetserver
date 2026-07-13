@@ -169,6 +169,29 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 	HoHpSendToPlayer(pGameServer, pPlayer, aBuf);
 }
 
+void HoHpShowOverkillDeath(CCharacter *pChr)
+{
+	if(!pChr)
+		return;
+
+	CPlayer *pPlayer = pChr->GetPlayer();
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pPlayer || !pGameServer || !HoHpShouldBroadcast(pPlayer))
+		return;
+
+	const int Now = pGameServer->Server()->Tick();
+	// Real HP damage (fall / wall) already armed the hold — keep that number.
+	if(HoHpPostDeathActive(pPlayer, Now))
+		return;
+
+	// Cosmetic overkill for instant kills: suicide, kill_pl, border, world, rcon, etc.
+	constexpr int Overkill = 2147483647;
+	pChr->m_HoHp = 0;
+	pChr->m_HoHpLastDelta = -Overkill;
+	pChr->m_HoHpLastDeltaTick = Now;
+	HoHpArmPostDeathBroadcast(pChr);
+}
+
 void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 {
 	if(!pGameServer || !pPlayer)
