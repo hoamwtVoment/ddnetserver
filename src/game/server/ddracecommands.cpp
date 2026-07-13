@@ -834,7 +834,7 @@ void CGameContext::ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData)
 		pPlayer->m_aHoWeaponMode[WEAPON_HAMMER] = 0;
 
 	char aBuf[128];
-	str_format(aBuf, sizeof(aBuf), "mace hammer %s for %d '%s' (F3 weapon select while holding hammer)",
+	str_format(aBuf, sizeof(aBuf), "mace hammer %s for %d '%s' (F3 while holding hammer; lost on death)",
 		pPlayer->m_HoMaceHammer ? "OWNED" : "REMOVED",
 		ClientId, pSelf->Server()->ClientName(ClientId));
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);

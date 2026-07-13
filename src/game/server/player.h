@@ -129,7 +129,7 @@ public:
 	int m_HoHpLastBroadcastTick;
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
-	// Minecraft mace ownership (rcon ho_macehammer); active mode in m_aHoWeaponMode[HAMMER]
+	// Minecraft mace ownership (rcon ho_macehammer); cleared on death. Active mode in m_aHoWeaponMode[HAMMER]
 	bool m_HoMaceHammer;
 	// Per-weapon mode (0 = vanilla). Selected via F3 weapon select menu. Indices: hammer..ninja
 	static const int HO_WEAPON_MODE_SLOTS = 6;

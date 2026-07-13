@@ -1184,6 +1184,14 @@ void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 	GameServer()->CreateSound(m_Pos, SOUND_PLAYER_DIE, TeamMask());
 	GameServer()->CreateDeath(m_Pos, m_pPlayer->GetCid(), TeamMask());
 
+	// Mace is a life-limited grant (not permanent like rcon-only until toggled off).
+	// Clear on death so respawn returns to vanilla hammer unless re-given.
+	if(m_pPlayer->m_HoMaceHammer)
+	{
+		m_pPlayer->m_HoMaceHammer = false;
+		m_pPlayer->m_aHoWeaponMode[WEAPON_HAMMER] = 0; // HO_WPNMODE_VANILLA
+	}
+
 	// this is to rate limit respawning to 3 secs
 	m_pPlayer->m_PreviousDieTick = m_pPlayer->m_DieTick;
 	m_pPlayer->m_DieTick = Server()->Tick();
