@@ -12,6 +12,8 @@ enum
 	HO_DEATH_FALL,
 	// Horizontal wall slam at high speed (MC elytra-into-wall style)
 	HO_DEATH_KINETIC,
+	// Left the game layer (map border / GameLayerClipped)
+	HO_DEATH_BORDER,
 };
 
 // Call from Die() when a kill message is sent / player actually dies.

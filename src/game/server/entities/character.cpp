@@ -1647,6 +1647,7 @@ void CCharacter::HandleSkippableTiles(int Index)
 
 	if(GameServer()->HoTileEnabled(CGameContext::HO_TILE_BORDER) && GameLayerClipped(m_Pos))
 	{
+		m_HoDeathCause = HO_DEATH_BORDER;
 		Die(m_pPlayer->GetCid(), WEAPON_WORLD);
 		return;
 	}
