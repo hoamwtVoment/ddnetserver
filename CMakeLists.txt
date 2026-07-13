@@ -2985,6 +2985,8 @@ if(SERVER)
     hoam/hp.h
     hoam/lang.cpp
     hoam/lang.h
+    hoam/macehammer.cpp
+    hoam/macehammer.h
     hoam/portal.cpp
     hoam/portal.h
     interactions.cpp

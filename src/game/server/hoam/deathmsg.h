@@ -16,6 +16,8 @@ enum
 	HO_DEATH_BORDER,
 	// TILE_DEATH (spikes / 刺)
 	HO_DEATH_SPIKE,
+	// Minecraft mace smash kill
+	HO_DEATH_MACE,
 };
 
 // Call from Die() when a kill message is sent / player actually dies.

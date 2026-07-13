@@ -253,6 +253,9 @@ public:
 	int m_HoLastHitCid;
 	int m_HoLastHitTick;
 	int m_HoLastHitWeapon;
+	// Minecraft mace fall tracking (attacker side)
+	bool m_HoMaceInAir;
+	float m_HoMaceFallStartY;
 
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }

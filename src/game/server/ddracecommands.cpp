@@ -790,6 +790,51 @@ void CGameContext::ConHoFlyMode(IConsole::IResult *pResult, void *pUserData)
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_flymode", aBuf);
 }
 
+void CGameContext::ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+
+	if(pResult->NumArguments() == 0)
+	{
+		int Count = 0;
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			CPlayer *pPlayer = pSelf->m_apPlayers[i];
+			if(!pPlayer || !pPlayer->m_HoMaceHammer)
+				continue;
+			char aBuf[128];
+			str_format(aBuf, sizeof(aBuf), "mace: %d '%s'", i, pSelf->Server()->ClientName(i));
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
+			Count++;
+		}
+		if(Count == 0)
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", "no players have mace hammer");
+		else
+		{
+			char aBuf[64];
+			str_format(aBuf, sizeof(aBuf), "total: %d", Count);
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
+		}
+		return;
+	}
+
+	const int ClientId = pResult->GetInteger(0);
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", "invalid client id");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	pPlayer->m_HoMaceHammer = !pPlayer->m_HoMaceHammer;
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "mace hammer %s for %d '%s'",
+		pPlayer->m_HoMaceHammer ? "ON" : "OFF",
+		ClientId, pSelf->Server()->ClientName(ClientId));
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
+}
+
 void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;

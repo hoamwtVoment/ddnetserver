@@ -87,6 +87,24 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 		return;
 	}
 
+	// death.attack.mace_smash / .item — killer is pKiller
+	if(DeathCause == HO_DEATH_MACE)
+	{
+		const char *pWho = pKiller ? pKiller : pAttacker;
+		if(pWho)
+		{
+			if(Lang == HO_LANG_ZH)
+				str_format(pBuf, BufSize, "%s 被 %s 一锤毙命", pVictim, pWho);
+			else
+				str_format(pBuf, BufSize, "%s was smashed by %s with a mace", pVictim, pWho);
+		}
+		else if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 被一锤毙命", pVictim);
+		else
+			str_format(pBuf, BufSize, "%s was smashed by a mace", pVictim);
+		return;
+	}
+
 	// death.attack.genericKill / .player  ( /kill )
 	// death.attack.generic
 	if(Self || !pKiller)

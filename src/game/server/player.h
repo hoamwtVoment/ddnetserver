@@ -127,6 +127,8 @@ public:
 	int m_HoHpLastBroadcastTick;
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
+	// Minecraft mace mode: hammer attacks use mace smash/fall damage rules
+	bool m_HoMaceHammer;
 
 	// network latency calculations
 	struct

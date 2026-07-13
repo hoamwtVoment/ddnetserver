@@ -23,6 +23,7 @@
 #include <game/server/hoam/deathmsg.h>
 #include <game/server/hoam/falldamage.h>
 #include <game/server/hoam/hp.h>
+#include <game/server/hoam/macehammer.h>
 #include <game/server/player.h>
 #include <game/server/score.h>
 #include <game/server/teams.h>
@@ -58,6 +59,8 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoLastHitCid = -1;
 	m_HoLastHitTick = 0;
 	m_HoLastHitWeapon = -1;
+	m_HoMaceInAir = false;
+	m_HoMaceFallStartY = 0.0f;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -138,6 +141,8 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_HoLastHitCid = -1;
 	m_HoLastHitTick = 0;
 	m_HoLastHitWeapon = -1;
+	m_HoMaceInAir = false;
+	m_HoMaceFallStartY = 0.0f;
 
 	int Team = GameServer()->m_aTeamMapping[m_pPlayer->GetCid()];
 
@@ -561,6 +566,14 @@ void CCharacter::FireWeapon()
 			else
 				GameServer()->CreateHammerHit(ProjStartPos, TeamMask());
 
+			// Minecraft mace: hammer becomes mace for players with ho_macehammer.
+			if(m_pPlayer->m_HoMaceHammer && HoMaceTryHammerHit(this, pTarget))
+			{
+				Antibot()->OnHammerHit(m_pPlayer->GetCid(), pTarget->GetPlayer()->GetCid());
+				Hits++;
+				continue;
+			}
+
 			vec2 Dir;
 			if(length(pTarget->m_Pos - m_Pos) > 0.0f)
 				Dir = normalize(pTarget->m_Pos - m_Pos);
@@ -969,6 +982,10 @@ void CCharacter::TickDeferred()
 		HoFallDamageAfterMove(this, StartVel);
 	if(!m_Alive)
 		return;
+
+	// Mace fall-height tracking after physics.
+	if(m_Alive && !m_Paused)
+		HoMaceUpdateFall(this);
 
 	if(!StuckBefore && (StuckAfterMove || StuckAfterQuant))
 	{
