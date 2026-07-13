@@ -31,6 +31,8 @@ void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearB
 	if(!pPlayer)
 		return;
 
+	// Prefer not to push "" unless the caller truly wants a blank HUD.
+	// Empty important broadcasts make the client keep a blank line for ~10s.
 	if(ClearBroadcast && pPlayer->m_HoHpPostDeathUntil > 0 && pGameServer)
 		HoHpSendToPlayer(pGameServer, pPlayer, "");
 
@@ -47,9 +49,14 @@ void HoHpReset(CCharacter *pChr)
 	pChr->m_HoHpLastDelta = 0;
 	pChr->m_HoHpLastDeltaTick = 0;
 
-	// Respawn: stop holding the death HP line.
-	if(CPlayer *pPlayer = pChr->GetPlayer())
-		HoHpClearPostDeath(pChr->GameServer(), pPlayer, true);
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!pPlayer)
+		return;
+
+	// Drop post-death hold without blanking the HUD, then restore full HP line.
+	pPlayer->m_HoHpPostDeathUntil = 0;
+	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
+	HoHpSendBroadcast(pChr);
 }
 
 void HoHpNoteDelta(CCharacter *pChr, int Delta)
@@ -151,10 +158,11 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 	if(!pGameServer || !pPlayer || pPlayer->m_HoHpPostDeathUntil <= 0)
 		return;
 
-	// Alive again: drop hold (spawn path also clears; belt-and-suspenders).
+	// Alive again: stop death hold (spawn already restored full HP broadcast).
 	if(pPlayer->GetCharacter() && pPlayer->GetCharacter()->IsAlive())
 	{
-		HoHpClearPostDeath(pGameServer, pPlayer, false);
+		pPlayer->m_HoHpPostDeathUntil = 0;
+		pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 		return;
 	}
 
@@ -169,8 +177,9 @@ void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 		return;
 	}
 
-	// Remaining time finished: clear the line.
-	HoHpSendToPlayer(pGameServer, pPlayer, "");
+	// Remaining death-hold time finished while still dead: clear hold only.
+	// Do not push "" — an empty important broadcast blanks the HUD for ~10s client-side
+	// and nothing restores HP until the next damage unless we respawn and send again.
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
 }
