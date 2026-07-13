@@ -5,6 +5,7 @@
 #include "entities/character.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
+#include "hoam/lang.h"
 #include "score.h"
 
 #include <base/dbg.h>
@@ -94,6 +95,7 @@ void CPlayer::Reset()
 	m_HoLaserMode = 0;
 	m_HoLastPortalMode = 1;
 	m_HoHpBroadcast = true;
+	HoLangInitPlayer(this);
 
 	m_SendVoteIndex = -1;
 

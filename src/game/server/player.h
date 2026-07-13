@@ -116,6 +116,8 @@ public:
 	int m_HoLastPortalMode;
 	// Independent HP broadcast (default on); toggle with /hp
 	bool m_HoHpBroadcast;
+	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
+	int m_HoLang;
 
 	// network latency calculations
 	struct

@@ -2983,6 +2983,8 @@ if(SERVER)
     hoam/falldamage.h
     hoam/hp.cpp
     hoam/hp.h
+    hoam/lang.cpp
+    hoam/lang.h
     hoam/portal.cpp
     hoam/portal.h
     interactions.cpp

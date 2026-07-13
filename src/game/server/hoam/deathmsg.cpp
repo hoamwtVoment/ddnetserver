@@ -1,5 +1,7 @@
 #include "deathmsg.h"
 
+#include "lang.h"
+
 #include <base/str.h>
 
 #include <engine/shared/config.h>
@@ -9,6 +11,117 @@
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
+
+// DDRace shotgun is the freeze laser, not a pellet gun.
+static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, const char *pVictim, const char *pKiller, char *pBuf, int BufSize)
+{
+	if(DeathCause == HO_DEATH_FALL)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 从高处摔了下来", pVictim);
+		else
+			str_format(pBuf, BufSize, "%s fell from a high place", pVictim);
+		return;
+	}
+
+	if(Self || !pKiller)
+	{
+		if(Lang == HO_LANG_ZH)
+		{
+			switch(Weapon)
+			{
+			case WEAPON_SELF:
+				str_format(pBuf, BufSize, "%s 死了", pVictim);
+				break;
+			case WEAPON_WORLD:
+				str_format(pBuf, BufSize, "%s 被世界杀死了", pVictim);
+				break;
+			default:
+				str_format(pBuf, BufSize, "%s 死了", pVictim);
+				break;
+			}
+		}
+		else
+		{
+			switch(Weapon)
+			{
+			case WEAPON_SELF:
+				str_format(pBuf, BufSize, "%s died", pVictim);
+				break;
+			case WEAPON_WORLD:
+				str_format(pBuf, BufSize, "%s was slain by the world", pVictim);
+				break;
+			default:
+				str_format(pBuf, BufSize, "%s died", pVictim);
+				break;
+			}
+		}
+		return;
+	}
+
+	if(Lang == HO_LANG_ZH)
+	{
+		switch(Weapon)
+		{
+		case WEAPON_HAMMER:
+			str_format(pBuf, BufSize, "%s 被 %s 击杀了", pVictim, pKiller);
+			break;
+		case WEAPON_GUN:
+			str_format(pBuf, BufSize, "%s 被 %s 开枪打死了", pVictim, pKiller);
+			break;
+		case WEAPON_SHOTGUN:
+			// DDRace: shotgun slot = freeze laser
+			str_format(pBuf, BufSize, "%s 被 %s 的冰冻激光杀死了", pVictim, pKiller);
+			break;
+		case WEAPON_GRENADE:
+			str_format(pBuf, BufSize, "%s 被 %s 炸死了", pVictim, pKiller);
+			break;
+		case WEAPON_LASER:
+			str_format(pBuf, BufSize, "%s 被 %s 用激光狙杀了", pVictim, pKiller);
+			break;
+		case WEAPON_NINJA:
+			str_format(pBuf, BufSize, "%s 被 %s 斩杀了", pVictim, pKiller);
+			break;
+		case WEAPON_WORLD:
+			str_format(pBuf, BufSize, "%s 被 %s 杀死了", pVictim, pKiller);
+			break;
+		default:
+			str_format(pBuf, BufSize, "%s 被 %s 击杀了", pVictim, pKiller);
+			break;
+		}
+	}
+	else
+	{
+		switch(Weapon)
+		{
+		case WEAPON_HAMMER:
+			str_format(pBuf, BufSize, "%s was slain by %s", pVictim, pKiller);
+			break;
+		case WEAPON_GUN:
+			str_format(pBuf, BufSize, "%s was shot by %s", pVictim, pKiller);
+			break;
+		case WEAPON_SHOTGUN:
+			// DDRace: shotgun slot = freeze laser
+			str_format(pBuf, BufSize, "%s was freeze-lasered by %s", pVictim, pKiller);
+			break;
+		case WEAPON_GRENADE:
+			str_format(pBuf, BufSize, "%s was blown up by %s", pVictim, pKiller);
+			break;
+		case WEAPON_LASER:
+			str_format(pBuf, BufSize, "%s was sniped by %s", pVictim, pKiller);
+			break;
+		case WEAPON_NINJA:
+			str_format(pBuf, BufSize, "%s was sliced by %s", pVictim, pKiller);
+			break;
+		case WEAPON_WORLD:
+			str_format(pBuf, BufSize, "%s was killed by %s", pVictim, pKiller);
+			break;
+		default:
+			str_format(pBuf, BufSize, "%s was slain by %s", pVictim, pKiller);
+			break;
+		}
+	}
+}
 
 void HoDeathMsgOnDie(CGameContext *pGameServer, CCharacter *pVictim, int Killer, int Weapon)
 {
@@ -33,65 +146,27 @@ void HoDeathMsgOnDie(CGameContext *pGameServer, CCharacter *pVictim, int Killer,
 	if(!Self && Killer >= 0 && Killer < MAX_CLIENTS && pGameServer->m_apPlayers[Killer])
 		pKillerName = pGameServer->Server()->ClientName(Killer);
 
-	char aMsg[256];
+	// Per-client language (same look as system chat: ClientId -1).
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		CPlayer *pViewer = pGameServer->m_apPlayers[i];
+		if(!pViewer || pViewer->m_DND)
+			continue;
 
-	if(DeathCause == HO_DEATH_FALL)
-	{
-		// MC: "Player fell from a high place"
-		str_format(aMsg, sizeof(aMsg), "%s fell from a high place", pVictimName);
-	}
-	else if(Self)
-	{
-		switch(Weapon)
-		{
-		case WEAPON_SELF:
-			// MC /kill-ish
-			str_format(aMsg, sizeof(aMsg), "%s died", pVictimName);
-			break;
-		case WEAPON_WORLD:
-			// death tiles, world hazards
-			str_format(aMsg, sizeof(aMsg), "%s was slain by the world", pVictimName);
-			break;
-		default:
-			str_format(aMsg, sizeof(aMsg), "%s died", pVictimName);
-			break;
-		}
-	}
-	else if(pKillerName)
-	{
-		switch(Weapon)
-		{
-		case WEAPON_HAMMER:
-			str_format(aMsg, sizeof(aMsg), "%s was slain by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_GUN:
-			str_format(aMsg, sizeof(aMsg), "%s was shot by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_SHOTGUN:
-			str_format(aMsg, sizeof(aMsg), "%s was shot by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_GRENADE:
-			str_format(aMsg, sizeof(aMsg), "%s was blown up by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_LASER:
-			str_format(aMsg, sizeof(aMsg), "%s was sniped by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_NINJA:
-			str_format(aMsg, sizeof(aMsg), "%s was sliced by %s", pVictimName, pKillerName);
-			break;
-		case WEAPON_WORLD:
-			str_format(aMsg, sizeof(aMsg), "%s was killed by %s", pVictimName, pKillerName);
-			break;
-		default:
-			str_format(aMsg, sizeof(aMsg), "%s was slain by %s", pVictimName, pKillerName);
-			break;
-		}
-	}
-	else
-	{
-		str_format(aMsg, sizeof(aMsg), "%s died", pVictimName);
+		char aMsg[256];
+		HoDeathMsgFormat(HoLangResolve(pGameServer, pViewer), DeathCause, Weapon, Self, pVictimName, pKillerName, aMsg, sizeof(aMsg));
+		pGameServer->SendChatTarget(i, aMsg);
 	}
 
-	// System chat (ClientId -1), same channel as server announcements.
-	pGameServer->SendChat(-1, TEAM_ALL, aMsg);
+	// Demo recording: English system line
+	if(g_Config.m_SvDemoChat)
+	{
+		char aDemo[256];
+		HoDeathMsgFormat(HO_LANG_EN, DeathCause, Weapon, Self, pVictimName, pKillerName, aDemo, sizeof(aDemo));
+		CNetMsg_Sv_Chat Msg;
+		Msg.m_Team = 0;
+		Msg.m_ClientId = -1;
+		Msg.m_pMessage = aDemo;
+		pGameServer->Server()->SendPackMsg(&Msg, MSGFLAG_NOSEND, SERVER_DEMO_CLIENT);
+	}
 }
