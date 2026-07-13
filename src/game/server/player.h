@@ -121,6 +121,8 @@ public:
 	// After lethal HP damage: hold last HP broadcast until this tick (remaining delta time)
 	int m_HoHpPostDeathUntil;
 	char m_aHoHpPostDeathMsg[96];
+	// Send full HP once after spawn (avoids welcome broadcasts wiping the first HP line)
+	bool m_HoHpPendingSpawnBroadcast;
 	// hoam UI language: HO_LANG_AUTO / EN / ZH (see hoam/lang.h)
 	int m_HoLang;
 

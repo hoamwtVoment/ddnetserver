@@ -1554,6 +1554,10 @@ void CCharacter::HandleBroadcast()
 		return;
 	}
 
+	// Death-hold owns the HUD until the remaining damage-line time ends.
+	if(HoHpPostDeathActive(m_pPlayer, Server()->Tick()))
+		return;
+
 	const bool ShowRaceTimer = (m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_BROADCAST || m_pPlayer->m_TimerType == CPlayer::TIMERTYPE_GAMETIMER_AND_BROADCAST) && m_DDRaceState == ERaceState::STARTED;
 	const bool ShowHoHp = HoHpShouldBroadcast(m_pPlayer);
 	if(!ShowRaceTimer && !ShowHoHp)
@@ -1584,7 +1588,8 @@ void CCharacter::HandleBroadcast()
 		m_LastTimeCpBroadcasted = m_LastTimeCp;
 	}
 
-	GameServer()->SendBroadcast(aBuf, m_pPlayer->GetCid(), false);
+	// Important so HP is not dropped after other important broadcasts.
+	GameServer()->SendBroadcast(aBuf, m_pPlayer->GetCid(), true);
 	m_LastBroadcast = Server()->Tick();
 }
 

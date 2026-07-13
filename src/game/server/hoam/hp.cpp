@@ -12,6 +12,9 @@
 
 #include <algorithm>
 
+// Refresh post-death / held HP line this often (ticks). Avoids every-tick spam.
+static constexpr int HO_HP_HOLD_REFRESH_TICKS = 5;
+
 int HoHpMax()
 {
 	return std::max(0, g_Config.m_HoHp);
@@ -21,9 +24,13 @@ static void HoHpSendToPlayer(CGameContext *pGameServer, CPlayer *pPlayer, const 
 {
 	if(!pGameServer || !pPlayer || !pText)
 		return;
-	// Important: non-important broadcasts are dropped for 10s after any important one,
-	// and post-death UI must not be silently discarded.
+	// Important so other non-important broadcasts cannot drop HP lines.
 	pGameServer->SendBroadcast(pText, pPlayer->GetCid(), true);
+}
+
+bool HoHpPostDeathActive(const CPlayer *pPlayer, int NowTick)
+{
+	return pPlayer && pPlayer->m_HoHpPostDeathUntil > NowTick && pPlayer->m_aHoHpPostDeathMsg[0] != '\0';
 }
 
 void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearBroadcast)
@@ -31,10 +38,9 @@ void HoHpClearPostDeath(CGameContext *pGameServer, CPlayer *pPlayer, bool ClearB
 	if(!pPlayer)
 		return;
 
-	// Prefer not to push "" unless the caller truly wants a blank HUD.
-	// Empty important broadcasts make the client keep a blank line for ~10s.
-	if(ClearBroadcast && pPlayer->m_HoHpPostDeathUntil > 0 && pGameServer)
-		HoHpSendToPlayer(pGameServer, pPlayer, "");
+	// Never push "" here: empty important broadcasts blank the client HUD for ~10s.
+	(void)pGameServer;
+	(void)ClearBroadcast;
 
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
@@ -46,16 +52,26 @@ void HoHpReset(CCharacter *pChr)
 		return;
 
 	pChr->m_HoHp = HoHpMax();
-	pChr->m_HoHpLastDelta = 0;
-	pChr->m_HoHpLastDeltaTick = 0;
-
+	// Keep last delta ticks only if a post-death hold is still showing; otherwise reset.
 	CPlayer *pPlayer = pChr->GetPlayer();
-	if(!pPlayer)
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pPlayer || !pGameServer)
 		return;
 
-	// Drop post-death hold without blanking the HUD, then restore full HP line.
-	pPlayer->m_HoHpPostDeathUntil = 0;
-	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
+	const int Now = pGameServer->Server()->Tick();
+	if(HoHpPostDeathActive(pPlayer, Now))
+	{
+		// Instant / early respawn: gameplay HP is full, but HUD keeps death line until hold ends.
+		pChr->m_HoHpLastDelta = 0;
+		pChr->m_HoHpLastDeltaTick = 0;
+		return;
+	}
+
+	pChr->m_HoHpLastDelta = 0;
+	pChr->m_HoHpLastDeltaTick = 0;
+	HoHpClearPostDeath(pGameServer, pPlayer, false);
+	// Defer one tick so join/welcome broadcasts cannot permanently cover the first HP line.
+	pPlayer->m_HoHpPendingSpawnBroadcast = true;
 	HoHpSendBroadcast(pChr);
 }
 
@@ -102,8 +118,6 @@ void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize)
 		return;
 	}
 
-	// Line 1: current HP
-	// Line 2 (optional): last change, e.g. "-20" or "+10"
 	CPlayer *pPlayer = pChr->GetPlayer();
 	if(HoHpDeltaVisible(pChr, pPlayer))
 		str_format(pBuf, BufSize, "HP %d/%d\n%+d", pChr->m_HoHp, HoHpMax(), pChr->m_HoHpLastDelta);
@@ -118,6 +132,11 @@ void HoHpSendBroadcast(CCharacter *pChr)
 
 	CPlayer *pPlayer = pChr->GetPlayer();
 	if(!HoHpShouldBroadcast(pPlayer))
+		return;
+
+	// Death-hold owns the HUD until the remaining delta time ends.
+	const int Now = pChr->GameServer()->Server()->Tick();
+	if(HoHpPostDeathActive(pPlayer, Now))
 		return;
 
 	char aBuf[96];
@@ -135,7 +154,6 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 	if(!pPlayer || !pGameServer || !HoHpShouldBroadcast(pPlayer))
 		return;
 
-	// Continue whatever is left of the delta visibility window — do not restart the timer.
 	const int Expire = HoHpDeltaExpireTick(pChr);
 	const int Now = pGameServer->Server()->Tick();
 	if(Expire <= Now)
@@ -148,40 +166,49 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 
 	str_copy(pPlayer->m_aHoHpPostDeathMsg, aBuf);
 	pPlayer->m_HoHpPostDeathUntil = Expire;
-
-	// Send immediately (important). Caller may Die() right after; player tick keeps refreshing.
 	HoHpSendToPlayer(pGameServer, pPlayer, aBuf);
 }
 
 void HoHpPlayerTick(CGameContext *pGameServer, CPlayer *pPlayer)
 {
-	if(!pGameServer || !pPlayer || pPlayer->m_HoHpPostDeathUntil <= 0)
+	if(!pGameServer || !pPlayer)
 		return;
-
-	// Alive again: stop death hold (spawn already restored full HP broadcast).
-	if(pPlayer->GetCharacter() && pPlayer->GetCharacter()->IsAlive())
-	{
-		pPlayer->m_HoHpPostDeathUntil = 0;
-		pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
-		return;
-	}
 
 	IServer *pServer = pGameServer->Server();
 	const int Now = pServer->Tick();
 
+	// Pending full-HP show after join (welcome broadcasts may run first).
+	if(pPlayer->m_HoHpPendingSpawnBroadcast && HoHpShouldBroadcast(pPlayer))
+	{
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+		{
+			if(pChr->IsAlive() && !HoHpPostDeathActive(pPlayer, Now))
+			{
+				pPlayer->m_HoHpPendingSpawnBroadcast = false;
+				HoHpSendBroadcast(pChr);
+			}
+		}
+	}
+
+	if(pPlayer->m_HoHpPostDeathUntil <= 0)
+		return;
+
 	if(Now <= pPlayer->m_HoHpPostDeathUntil)
 	{
-		// Re-push every tick so death-frame overwrites cannot wipe the line.
-		if(pPlayer->m_aHoHpPostDeathMsg[0])
+		// Keep death line on top even if the player already respawned.
+		if(pPlayer->m_aHoHpPostDeathMsg[0] && (Now % HO_HP_HOLD_REFRESH_TICKS) == 0)
 			HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
 		return;
 	}
 
-	// Remaining death-hold time finished while still dead: clear hold only.
-	// Do not push "" — an empty important broadcast blanks the HUD for ~10s client-side
-	// and nothing restores HP until the next damage unless we respawn and send again.
+	// Hold finished: restore normal full HP if alive.
 	pPlayer->m_HoHpPostDeathUntil = 0;
 	pPlayer->m_aHoHpPostDeathMsg[0] = '\0';
+	if(CCharacter *pChr = pPlayer->GetCharacter())
+	{
+		if(pChr->IsAlive())
+			HoHpSendBroadcast(pChr);
+	}
 }
 
 bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback, int DeathCause)
@@ -197,7 +224,6 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 	if(!pPlayer)
 		return false;
 
-	// Super / invincible ignore independent HP damage.
 	if(pChr->IsSuper() || pChr->Core()->m_Invincible)
 		return false;
 
@@ -228,10 +254,8 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 
 		if(Lethal)
 		{
-			// Arm + send while character is still valid, then die. Player tick keeps it up.
 			HoHpArmPostDeathBroadcast(pChr);
 			pChr->Die(Killer, Weapon);
-			// Die() cannot send broadcast; push again via player after removal.
 			if(pPlayer->m_HoHpPostDeathUntil > 0 && pPlayer->m_aHoHpPostDeathMsg[0])
 				HoHpSendToPlayer(pGameServer, pPlayer, pPlayer->m_aHoHpPostDeathMsg);
 			return true;

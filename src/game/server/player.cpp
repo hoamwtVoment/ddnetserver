@@ -99,6 +99,7 @@ void CPlayer::Reset()
 	m_HoHpDeltaBroadcast = true;
 	m_HoHpPostDeathUntil = 0;
 	m_aHoHpPostDeathMsg[0] = '\0';
+	m_HoHpPendingSpawnBroadcast = false;
 	HoLangInitPlayer(this);
 
 	m_SendVoteIndex = -1;
