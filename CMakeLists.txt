@@ -2977,6 +2977,8 @@ if(SERVER)
     gamemodes/mod.h
     gameworld.cpp
     gameworld.h
+    hoam/deathmsg.cpp
+    hoam/deathmsg.h
     hoam/falldamage.cpp
     hoam/falldamage.h
     hoam/hp.cpp

@@ -306,6 +306,7 @@ MACRO_CONFIG_INT(SvPracticeByDefault, sv_practice_by_default, 0, 0, 1, CFGFLAG_S
 MACRO_CONFIG_INT(HoHp, ho_hp, 100, 0, 100000, CFGFLAG_SERVER, "Independent HP max on spawn (0 disables HP system)")
 MACRO_CONFIG_INT(HoFalldamage, ho_falldamage, 0, 0, 1, CFGFLAG_SERVER, "Enable fall damage against independent HP (0=off, 1=on)")
 MACRO_CONFIG_INT(HoFalldamageScale, ho_falldamage_scale, 100, 0, 10000, CFGFLAG_SERVER, "Fall damage multiplier in percent (100 = 1x)")
+MACRO_CONFIG_INT(HoDeathmsg, ho_deathmsg, 1, 0, 1, CFGFLAG_SERVER, "Minecraft-style death messages in chat (0=off, 1=on)")
 
 MACRO_CONFIG_INT(ClVideoPauseWithDemo, cl_video_pausewithdemo, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pause video rendering when demo playing pause")
 MACRO_CONFIG_INT(ClVideoShowhud, cl_video_showhud, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show ingame HUD when rendering video")

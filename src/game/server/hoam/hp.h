@@ -12,7 +12,8 @@ void HoHpReset(CCharacter *pChr);
 
 // Returns true if the character died from this damage.
 // Killer/Weapon are used for the kill message when HP reaches 0.
-bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback = true);
+// DeathCause is stored for Minecraft-style chat (see hoam/deathmsg.h).
+bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback = true, int DeathCause = 0);
 bool HoHpHeal(CCharacter *pChr, int Amount);
 
 // Broadcast helpers (display is opt-out per player via /hp).

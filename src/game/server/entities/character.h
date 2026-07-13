@@ -244,6 +244,8 @@ public:
 	int m_HoHp;
 	float m_HoFallAirVelY;
 	bool m_HoFallWasGrounded;
+	// Last independent-HP death cause for Minecraft-style chat (hoam/deathmsg.h)
+	int m_HoDeathCause;
 
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }

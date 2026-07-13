@@ -58,7 +58,7 @@ void HoHpSendBroadcast(CCharacter *pChr)
 	pChr->GameServer()->SendBroadcast(aBuf, pPlayer->GetCid(), false);
 }
 
-bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback)
+bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool ShowFeedback, int DeathCause)
 {
 	if(!pChr || !pChr->IsAlive() || Damage <= 0)
 		return false;
@@ -82,6 +82,8 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 		Damage = pChr->m_HoHp;
 
 	pChr->m_HoHp -= Damage;
+	if(DeathCause != 0)
+		pChr->m_HoDeathCause = DeathCause;
 
 	if(ShowFeedback)
 	{

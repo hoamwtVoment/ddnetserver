@@ -20,6 +20,7 @@
 #include <game/mapitems.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
+#include <game/server/hoam/deathmsg.h>
 #include <game/server/hoam/falldamage.h>
 #include <game/server/hoam/hp.h>
 #include <game/server/player.h>
@@ -51,6 +52,7 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoHp = 0;
 	m_HoFallAirVelY = 0.0f;
 	m_HoFallWasGrounded = true;
+	m_HoDeathCause = 0;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -127,6 +129,7 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 
 	HoHpReset(this);
 	HoFallDamageReset(this);
+	m_HoDeathCause = 0;
 
 	int Team = GameServer()->m_aTeamMapping[m_pPlayer->GetCid()];
 
@@ -1105,6 +1108,11 @@ void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 	if(SendKillMsg)
 	{
 		SendDeathMessageIfNotInLockedTeam(Killer, Weapon, ModeSpecial);
+		HoDeathMsgOnDie(GameServer(), this, Killer, Weapon);
+	}
+	else
+	{
+		m_HoDeathCause = 0;
 	}
 
 	// a nice sound, and bursting tee death effect

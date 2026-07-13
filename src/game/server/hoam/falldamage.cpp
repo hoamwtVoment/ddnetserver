@@ -1,5 +1,6 @@
 #include "falldamage.h"
 
+#include "deathmsg.h"
 #include "hp.h"
 
 #include <engine/shared/config.h>
@@ -74,5 +75,5 @@ void HoFallDamageAfterMove(CCharacter *pChr, float PreMoveVelY)
 	if(Damage <= 0)
 		return;
 
-	HoHpTakeDamage(pChr, Damage, pPlayer->GetCid(), WEAPON_WORLD, true);
+	HoHpTakeDamage(pChr, Damage, pPlayer->GetCid(), WEAPON_WORLD, true, HO_DEATH_FALL);
 }
