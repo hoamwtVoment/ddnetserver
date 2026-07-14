@@ -24,6 +24,7 @@
 #include <game/server/hoam/falldamage.h>
 #include <game/server/hoam/hp.h>
 #include <game/server/hoam/macehammer.h>
+#include <game/server/hoam/fracture.h>
 #include <game/server/hoam/lasercannon.h>
 #include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
@@ -63,6 +64,9 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoLastHitWeapon = -1;
 	m_HoMaceInAir = false;
 	m_HoMaceFallStartY = 0.0f;
+	m_HoFractureLeg = false;
+	m_HoFractureArm = false;
+	m_HoWeaponSwitchReadyTick = 0;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -139,6 +143,7 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 
 	HoHpReset(this);
 	HoFallDamageReset(this);
+	HoFractureReset(this);
 	m_HoDeathCause = 0;
 	m_HoLastHitCid = -1;
 	m_HoLastHitTick = 0;
@@ -437,9 +442,16 @@ void CCharacter::DoWeaponSwitch()
 		return;
 	if((m_Core.m_aWeapons[WEAPON_NINJA].m_Got && !GameServer()->IsHoNinjaController(m_pPlayer->GetCid())) || !m_Core.m_aWeapons[m_QueuedWeapon].m_Got)
 		return;
+	// Arm fracture: slow weapon switching
+	if(m_HoWeaponSwitchReadyTick > 0 && Server()->Tick() < m_HoWeaponSwitchReadyTick)
+		return;
 
 	// switch Weapon
 	SetWeapon(m_QueuedWeapon);
+
+	const int SwitchDelay = HoFractureArmSwitchDelayTicks(this);
+	if(SwitchDelay > 0)
+		m_HoWeaponSwitchReadyTick = Server()->Tick() + SwitchDelay;
 }
 
 void CCharacter::HandleWeaponSwitch()
@@ -724,7 +736,11 @@ void CCharacter::FireWeapon()
 	// -1 is no weapon, handled here so pain sound still plays when firing in freeze
 	if(!m_ReloadTimer && m_Core.m_ActiveWeapon != -1)
 	{
-		m_ReloadTimer = GetTuning(m_TuneZone)->GetWeaponFireDelay(m_Core.m_ActiveWeapon) * Server()->TickSpeed();
+		float FireDelay = GetTuning(m_TuneZone)->GetWeaponFireDelay(m_Core.m_ActiveWeapon);
+		const int ExtraMs = HoFractureArmFireDelayMs(this);
+		if(ExtraMs > 0)
+			FireDelay += ExtraMs / 1000.0f;
+		m_ReloadTimer = FireDelay * Server()->TickSpeed();
 	}
 }
 
@@ -2356,6 +2372,7 @@ void CCharacter::HandleTuneLayer()
 	int CurrentIndex = Collision()->GetMapIndex(m_Pos);
 	m_TuneZone = Collision()->IsTune(CurrentIndex);
 	m_Core.m_Tuning = TuningList()[m_TuneZone]; // throw tunings from specific zone into gamecore
+	HoFractureApplyLegTuning(this, &m_Core.m_Tuning);
 
 	if(m_TuneZone != m_TuneZoneOld) // don't send tunigs all the time
 	{

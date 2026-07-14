@@ -311,6 +311,12 @@ MACRO_CONFIG_STR(HoLang, ho_lang, 8, "auto", CFGFLAG_SERVER, "Default player lan
 MACRO_CONFIG_INT(HoLasercannonLength, ho_lasercannon_length, 50, 1, 500, CFGFLAG_SERVER, "Laser cannon beam length in tiles (32px each)")
 MACRO_CONFIG_INT(HoLasercannonDamage, ho_lasercannon_damage, 1, 0, 10000, CFGFLAG_SERVER, "Laser cannon independent-HP damage per damage tick")
 MACRO_CONFIG_INT(HoLasercannonDamageDelay, ho_lasercannon_damage_delay, 1, 1, 50, CFGFLAG_SERVER, "Ticks between laser cannon damage applications")
+// Fracture: fall → leg (slow/jump), side wall → arm (switch/fire delay). Default off.
+MACRO_CONFIG_INT(HoFracture, ho_fracture, 0, 0, 1, CFGFLAG_SERVER, "Enable fracture effects; new fractures only while ho_falldamage is on (0=off, 1=on)")
+MACRO_CONFIG_INT(HoFractureLegSpeed, ho_fracture_leg_speed, 55, 10, 100, CFGFLAG_SERVER, "Leg fracture movement speed percent of normal")
+MACRO_CONFIG_INT(HoFractureLegJump, ho_fracture_leg_jump, 55, 10, 100, CFGFLAG_SERVER, "Leg fracture jump impulse percent of normal")
+MACRO_CONFIG_INT(HoFractureArmSwitchMs, ho_fracture_arm_switch_ms, 400, 0, 5000, CFGFLAG_SERVER, "Arm fracture extra weapon-switch cooldown (ms)")
+MACRO_CONFIG_INT(HoFractureArmFireMs, ho_fracture_arm_fire_ms, 150, 0, 5000, CFGFLAG_SERVER, "Arm fracture extra fire delay added to weapon reload (ms)")
 
 MACRO_CONFIG_INT(ClVideoPauseWithDemo, cl_video_pausewithdemo, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pause video rendering when demo playing pause")
 MACRO_CONFIG_INT(ClVideoShowhud, cl_video_showhud, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show ingame HUD when rendering video")

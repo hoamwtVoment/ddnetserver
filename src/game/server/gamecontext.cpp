@@ -4989,6 +4989,7 @@ void CGameContext::RegisterDDRaceCommands()
 	Console()->Register("ho_fakedeath", "i[id] ?i[killer] ?i[weapon]", CFGFLAG_SERVER, ConHoFakeDeath, this, "Send fake death without killing. weapon: game=-3 self=-2 world=-1 hammer=0 gun=1 shotgun=2 grenade=3 laser=4 ninja=5");
 	Console()->Register("ho_flymode", "?f[speed]", CFGFLAG_SERVER, ConHoFlyMode, this, "Toggle fly mode for yourself. speed is pixels per second; left/right move, jump moves up, hook moves down");
 	Console()->Register("ho_macehammer", "?i[id]", CFGFLAG_SERVER, ConHoMaceHammer, this, "Toggle Minecraft mace mode for player id (hammer becomes mace). No args: list mace players");
+	Console()->Register("ho_heal", "i[id]", CFGFLAG_SERVER, ConHoHeal, this, "Clear negative status (fractures) and fully restore independent HP for player id");
 	Console()->Register("ho_ninjacontroller", "?i[id]", CFGFLAG_SERVER, ConHoNinjaController, this, "Toggle gravity-gun ninja for player. Select ninja, left click a player to hold at cursor, click again to release");
 	Console()->Register("addweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConAddWeapon, this, "Gives weapon with id i to you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");
 	Console()->Register("removeweapon", "i[weapon-id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConRemoveWeapon, this, "removes weapon with id i from you (all = -1, hammer = 0, gun = 1, shotgun = 2, grenade = 3, laser = 4, ninja = 5)");

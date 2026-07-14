@@ -11,6 +11,8 @@
 #include <game/mapitems.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamemodes/ddnet.h>
+#include <game/server/hoam/fracture.h>
+#include <game/server/hoam/hp.h>
 #include <game/server/player.h>
 #include <game/server/save.h>
 #include <game/server/teams.h>
@@ -838,6 +840,51 @@ void CGameContext::ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData)
 		pPlayer->m_HoMaceHammer ? "OWNED" : "REMOVED",
 		ClientId, pSelf->Server()->ClientName(ClientId));
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
+}
+
+void CGameContext::ConHoHeal(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	const int ClientId = pResult->GetInteger(0);
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_heal", "invalid client id");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	CCharacter *pChr = pPlayer->GetCharacter();
+	if(!pChr || !pChr->IsAlive())
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_heal", "player has no living character");
+		return;
+	}
+
+	// Clear debuffs (fractures / arm switch lock).
+	HoFractureReset(pChr);
+
+	// Full independent HP.
+	const int Max = HoHpMax();
+	if(Max > 0)
+	{
+		if(pChr->m_HoHp < Max)
+			HoHpHeal(pChr, Max - pChr->m_HoHp);
+		else
+		{
+			// Already full: still refresh HUD after status clear.
+			pPlayer->m_HoHpLastBroadcastTick = 0;
+			HoHpSendBroadcast(pChr);
+		}
+	}
+
+	char aBuf[160];
+	if(Max > 0)
+		str_format(aBuf, sizeof(aBuf), "healed %d '%s': HP %d/%d, negative status cleared",
+			ClientId, pSelf->Server()->ClientName(ClientId), pChr->m_HoHp, Max);
+	else
+		str_format(aBuf, sizeof(aBuf), "healed %d '%s': negative status cleared (HP system off)",
+			ClientId, pSelf->Server()->ClientName(ClientId));
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_heal", aBuf);
 }
 
 void CGameContext::ConHoNinjaController(IConsole::IResult *pResult, void *pUserData)

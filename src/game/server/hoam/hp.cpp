@@ -1,5 +1,7 @@
 #include "hp.h"
 
+#include "fracture.h"
+
 #include <base/str.h>
 
 #include <engine/shared/config.h>
@@ -146,6 +148,9 @@ void HoHpFormatBroadcast(CCharacter *pChr, char *pBuf, int BufSize)
 		str_format(pBuf, BufSize, "HP %d/%d\n%+d", pChr->m_HoHp, HoHpMax(), pChr->m_HoHpLastDelta);
 	else
 		str_format(pBuf, BufSize, "HP %d/%d", pChr->m_HoHp, HoHpMax());
+
+	// Third line (or second if no delta): fracture status.
+	HoFractureAppendBroadcastLine(pChr, pBuf, BufSize);
 }
 
 void HoHpSendBroadcast(CCharacter *pChr)
@@ -161,7 +166,7 @@ void HoHpSendBroadcast(CCharacter *pChr)
 	if(HoHpPostDeathActive(pPlayer, Now))
 		return;
 
-	char aBuf[96];
+	char aBuf[160];
 	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
 	HoHpSendToPlayer(pChr->GameServer(), pPlayer, aBuf);
 }
@@ -181,7 +186,7 @@ void HoHpArmPostDeathBroadcast(CCharacter *pChr)
 	if(Expire <= Now)
 		return;
 
-	char aBuf[96];
+	char aBuf[160];
 	HoHpFormatBroadcast(pChr, aBuf, sizeof(aBuf));
 	if(!aBuf[0])
 		return;

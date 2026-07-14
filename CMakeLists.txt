@@ -2981,6 +2981,8 @@ if(SERVER)
     hoam/deathmsg.h
     hoam/falldamage.cpp
     hoam/falldamage.h
+    hoam/fracture.cpp
+    hoam/fracture.h
     hoam/hp.cpp
     hoam/hp.h
     hoam/lang.cpp
