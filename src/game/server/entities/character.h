@@ -256,11 +256,12 @@ public:
 	// Minecraft mace fall tracking (attacker side)
 	bool m_HoMaceInAir;
 	float m_HoMaceFallStartY;
-	// Fractures (ho_fracture): leg = fall, arm = side wall; cleared on spawn
-	bool m_HoFractureLeg;
-	bool m_HoFractureArm;
-	// Next tick weapon switch is allowed (arm fracture cooldown)
+	// Fractures (ho_fracture): 0 = none, 1–3 = severity I–III; cleared on spawn/heal
+	int m_HoFractureLegLevel;
+	int m_HoFractureArmLevel;
+	// Arm fracture: switch wind-up (+nextweapon / +weaponN). ReadyTick when pending.
 	int m_HoWeaponSwitchReadyTick;
+	bool m_HoWeaponSwitchPending;
 
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }

@@ -68,7 +68,7 @@ void HoFallDamageAfterMove(CCharacter *pChr, vec2 PreMoveVel)
 		if(ExcessX > 0.0f)
 		{
 			if(WantFracture)
-				HoFractureOnWallImpact(pChr);
+				HoFractureOnWallImpact(pChr, ExcessX);
 			const int WallDamage = HoImpactDamage(ExcessX, Scale);
 			if(WallDamage > 0)
 			{
@@ -105,7 +105,7 @@ void HoFallDamageAfterMove(CCharacter *pChr, vec2 PreMoveVel)
 		return;
 
 	if(WantFracture)
-		HoFractureOnFallImpact(pChr);
+		HoFractureOnFallImpact(pChr, ExcessY);
 
 	const int FallDamage = HoImpactDamage(ExcessY, Scale);
 	if(FallDamage > 0)

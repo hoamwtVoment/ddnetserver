@@ -64,9 +64,10 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoLastHitWeapon = -1;
 	m_HoMaceInAir = false;
 	m_HoMaceFallStartY = 0.0f;
-	m_HoFractureLeg = false;
-	m_HoFractureArm = false;
+	m_HoFractureLegLevel = 0;
+	m_HoFractureArmLevel = 0;
 	m_HoWeaponSwitchReadyTick = 0;
+	m_HoWeaponSwitchPending = false;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -437,21 +438,33 @@ void CCharacter::HandleNinja()
 
 void CCharacter::DoWeaponSwitch()
 {
-	// make sure we can switch
-	if(m_ReloadTimer != 0 || m_QueuedWeapon == -1)
+	if(m_QueuedWeapon == -1)
 		return;
 	if((m_Core.m_aWeapons[WEAPON_NINJA].m_Got && !GameServer()->IsHoNinjaController(m_pPlayer->GetCid())) || !m_Core.m_aWeapons[m_QueuedWeapon].m_Got)
 		return;
-	// Arm fracture: slow weapon switching
-	if(m_HoWeaponSwitchReadyTick > 0 && Server()->Tick() < m_HoWeaponSwitchReadyTick)
+
+	// Arm fracture: wind-up delay for +nextweapon / +prevweapon / +weapon1.. (queue stays until ready).
+	const int ArmDelay = HoFractureArmSwitchDelayTicks(this);
+	if(ArmDelay > 0)
+	{
+		if(!m_HoWeaponSwitchPending)
+		{
+			m_HoWeaponSwitchPending = true;
+			m_HoWeaponSwitchReadyTick = Server()->Tick() + ArmDelay;
+			return;
+		}
+		if(Server()->Tick() < m_HoWeaponSwitchReadyTick)
+			return;
+	}
+
+	// Vanilla: cannot finish a switch while reloading.
+	if(m_ReloadTimer != 0)
 		return;
 
 	// switch Weapon
 	SetWeapon(m_QueuedWeapon);
-
-	const int SwitchDelay = HoFractureArmSwitchDelayTicks(this);
-	if(SwitchDelay > 0)
-		m_HoWeaponSwitchReadyTick = Server()->Tick() + SwitchDelay;
+	m_HoWeaponSwitchPending = false;
+	m_HoWeaponSwitchReadyTick = 0;
 }
 
 void CCharacter::HandleWeaponSwitch()
