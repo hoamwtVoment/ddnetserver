@@ -12,7 +12,9 @@
 #include <game/server/entities/character.h>
 #include <game/server/gamemodes/ddnet.h>
 #include <game/server/hoam/fracture.h>
+#include <game/server/hoam/gojo.h>
 #include <game/server/hoam/hp.h>
+#include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
 #include <game/server/save.h>
 #include <game/server/teams.h>
@@ -840,6 +842,74 @@ void CGameContext::ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData)
 		pPlayer->m_HoMaceHammer ? "OWNED" : "REMOVED",
 		ClientId, pSelf->Server()->ClientName(ClientId));
 	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_macehammer", aBuf);
+}
+
+void CGameContext::ConHoGojo(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+
+	if(pResult->NumArguments() == 0)
+	{
+		int Count = 0;
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			CPlayer *pPlayer = pSelf->m_apPlayers[i];
+			if(!pPlayer || !pPlayer->m_HoGojo)
+				continue;
+			char aBuf[160];
+			str_format(aBuf, sizeof(aBuf), "gojo: %d '%s'%s", i, pSelf->Server()->ClientName(i),
+				pPlayer->m_HoGojoUnlimitedVoid ? " [无下限]" : "");
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", aBuf);
+			Count++;
+		}
+		if(Count == 0)
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", "no players have gojo kit");
+		else
+		{
+			char aBuf[64];
+			str_format(aBuf, sizeof(aBuf), "total: %d", Count);
+			pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", aBuf);
+		}
+		return;
+	}
+
+	const int ClientId = pResult->GetInteger(0);
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pSelf->m_apPlayers[ClientId])
+	{
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", "invalid client id");
+		return;
+	}
+
+	CPlayer *pPlayer = pSelf->m_apPlayers[ClientId];
+	if(pPlayer->m_HoGojo)
+	{
+		HoGojoOnDeath(pPlayer);
+		pSelf->SendChatTarget(ClientId, "ho_gojo removed");
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "gojo REMOVED for %d '%s'", ClientId, pSelf->Server()->ClientName(ClientId));
+		pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", aBuf);
+		return;
+	}
+
+	pPlayer->m_HoGojo = true;
+	pPlayer->m_HoGojoUnlimitedVoid = false;
+	// Default technique: 苍 (blue). F3 can switch; 无下限 is toggle-only.
+	pPlayer->m_aHoWeaponMode[WEAPON_SHOTGUN] = HO_WPNMODE_SHOTGUN_BLUE;
+
+	if(CCharacter *pChr = pPlayer->GetCharacter())
+	{
+		pChr->SetWeaponGot(WEAPON_SHOTGUN, true);
+		pChr->SetWeaponAmmo(WEAPON_SHOTGUN, -1);
+		pChr->SetWeapon(WEAPON_SHOTGUN);
+	}
+
+	// Exact chat line requested for grant.
+	pSelf->SendChatTarget(ClientId, "你已经变成了够久哈哈哈哈");
+
+	char aBuf[160];
+	str_format(aBuf, sizeof(aBuf), "gojo OWNED for %d '%s' (shotgun F3: 苍/赫/茈/无下限; lost on death)",
+		ClientId, pSelf->Server()->ClientName(ClientId));
+	pSelf->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_gojo", aBuf);
 }
 
 void CGameContext::ConHoHeal(IConsole::IResult *pResult, void *pUserData)

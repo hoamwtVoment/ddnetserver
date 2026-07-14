@@ -104,6 +104,9 @@ void CPlayer::Reset()
 	m_HoHpPendingSpawnBroadcast = false;
 	m_HoHpLastBroadcastTick = 0;
 	m_HoMaceHammer = false;
+	m_HoGojo = false;
+	m_HoGojoUnlimitedVoid = false;
+	m_pHoGojoBlue = nullptr;
 	for(int i = 0; i < HO_WEAPON_MODE_SLOTS; i++)
 		m_aHoWeaponMode[i] = 0;
 	m_HoWeaponSelectOpen = false;

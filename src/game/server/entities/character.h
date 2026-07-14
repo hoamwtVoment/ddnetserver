@@ -73,6 +73,8 @@ public:
 	void OnDirectInput(const CNetObj_PlayerInput *pNewInput);
 	void ReleaseHook();
 	void ResetHook();
+	// Grab hook tip at a world position without attaching to a player (void sphere barrier).
+	void SetHookGrabWorld(vec2 Pos);
 	void ResetInput();
 	void FireWeapon();
 
@@ -262,6 +264,13 @@ public:
 	// Arm fracture: switch wind-up (+nextweapon / +weaponN). ReadyTick when pending.
 	int m_HoWeaponSwitchReadyTick;
 	bool m_HoWeaponSwitchPending;
+	// Gojo (shotgun techniques): charge + purple merge state
+	int m_HoGojoChargeTicks;
+	bool m_HoGojoFireHeld;
+	int m_HoGojoPurpleMergeLeft;
+	vec2 m_HoGojoPurpleDir;
+	// Unlimited Void temporarily forces collision off; restore when domain ends
+	bool m_HoGojoVoidHadCollisionOff;
 
 	// Setters/Getters because i don't want to modify vanilla vars access modifiers
 	int GetLastWeapon() const { return m_LastWeapon; }

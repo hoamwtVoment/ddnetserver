@@ -25,6 +25,7 @@
 #include <game/server/hoam/hp.h>
 #include <game/server/hoam/macehammer.h>
 #include <game/server/hoam/fracture.h>
+#include <game/server/hoam/gojo.h>
 #include <game/server/hoam/lasercannon.h>
 #include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
@@ -68,6 +69,11 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoFractureArmLevel = 0;
 	m_HoWeaponSwitchReadyTick = 0;
 	m_HoWeaponSwitchPending = false;
+	m_HoGojoChargeTicks = 0;
+	m_HoGojoFireHeld = false;
+	m_HoGojoPurpleMergeLeft = 0;
+	m_HoGojoPurpleDir = vec2(1, 0);
+	m_HoGojoVoidHadCollisionOff = false;
 
 	m_Input = LastInput;
 	// never initialize both to zero
@@ -532,6 +538,10 @@ void CCharacter::FireWeapon()
 	if(m_Core.m_ActiveWeapon == WEAPON_LASER && HoLaserCannonModeActive(m_pPlayer))
 		return;
 
+	// Gojo shotgun techniques: charge-on-hold / release-to-cast (HoGojoTickCharacter).
+	if(m_Core.m_ActiveWeapon == WEAPON_SHOTGUN && HoGojoTechniqueMode(m_pPlayer))
+		return;
+
 	vec2 MouseTarget = vec2(m_LatestInput.m_TargetX, m_LatestInput.m_TargetY);
 	vec2 Direction = normalize(MouseTarget);
 
@@ -623,6 +633,10 @@ void CCharacter::FireWeapon()
 				continue;
 			}
 
+			// Unlimited Void: hammer does not land on domain user (except self, which is already skipped).
+			if(HoGojoVoidBlocksExternal(pTarget, m_pPlayer->GetCid()))
+				continue;
+
 			vec2 Dir;
 			if(length(pTarget->m_Pos - m_Pos) > 0.0f)
 				Dir = normalize(pTarget->m_Pos - m_Pos);
@@ -678,6 +692,10 @@ void CCharacter::FireWeapon()
 
 	case WEAPON_SHOTGUN:
 	{
+		// Technique modes never reach here (early return above); vanilla shotgun only.
+		if(HoGojoTechniqueMode(m_pPlayer))
+			break;
+
 		float LaserReach = GetTuning(m_TuneZone)->m_LaserReach;
 
 		new CLaser(&GameServer()->m_World, m_Pos, Direction, LaserReach, m_pPlayer->GetCid(), WEAPON_SHOTGUN);
@@ -764,6 +782,8 @@ void CCharacter::HandleWeapons()
 	HandleJetpack();
 	// Laser cannon beam (hold fire) — independent of weapon reload timer.
 	HoLaserCannonTickCharacter(this);
+	// Gojo charge / void / purple merge.
+	HoGojoTickCharacter(this);
 
 	if(m_PainSoundTimer > 0)
 		m_PainSoundTimer--;
@@ -865,6 +885,14 @@ void CCharacter::OnDirectInput(const CNetObj_PlayerInput *pNewInput)
 
 	mem_copy(&m_LatestPrevPrevInput, &m_LatestPrevInput, sizeof(m_LatestInput));
 	mem_copy(&m_LatestPrevInput, &m_LatestInput, sizeof(m_LatestInput));
+}
+
+void CCharacter::SetHookGrabWorld(vec2 Pos)
+{
+	m_Core.SetHookedPlayer(-1);
+	m_Core.m_HookState = HOOK_GRABBED;
+	m_Core.m_HookPos = Pos;
+	m_Core.m_HookTick = 0;
 }
 
 void CCharacter::ReleaseHook()
@@ -1220,6 +1248,9 @@ void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 		m_pPlayer->m_HoMaceHammer = false;
 		m_pPlayer->m_aHoWeaponMode[WEAPON_HAMMER] = 0; // HO_WPNMODE_VANILLA
 	}
+	// Gojo kit is also life-limited.
+	if(m_pPlayer->m_HoGojo)
+		HoGojoOnDeath(m_pPlayer);
 
 	// this is to rate limit respawning to 3 secs
 	m_pPlayer->m_PreviousDieTick = m_pPlayer->m_DieTick;
@@ -1236,6 +1267,10 @@ void CCharacter::Die(int Killer, int Weapon, bool SendKillMsg)
 
 bool CCharacter::TakeDamage(vec2 Force, int Dmg, int From, int Weapon)
 {
+	// Unlimited Void: immune to external force/damage (others + world explosions). Own weapons still work.
+	if(HoGojoVoidBlocksExternal(this, From))
+		return false;
+
 	if(Dmg)
 	{
 		SetEmote(EMOTE_PAIN, Server()->Tick() + 500 * Server()->TickSpeed() / 1000);
@@ -2386,6 +2421,7 @@ void CCharacter::HandleTuneLayer()
 	m_TuneZone = Collision()->IsTune(CurrentIndex);
 	m_Core.m_Tuning = TuningList()[m_TuneZone]; // throw tunings from specific zone into gamecore
 	HoFractureApplyLegTuning(this, &m_Core.m_Tuning);
+	HoGojoApplyChargeTuning(this, &m_Core.m_Tuning);
 
 	if(m_TuneZone != m_TuneZoneOld) // don't send tunigs all the time
 	{

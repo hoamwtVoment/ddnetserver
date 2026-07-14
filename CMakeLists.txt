@@ -2983,6 +2983,8 @@ if(SERVER)
     hoam/falldamage.h
     hoam/fracture.cpp
     hoam/fracture.h
+    hoam/gojo.cpp
+    hoam/gojo.h
     hoam/hp.cpp
     hoam/hp.h
     hoam/lang.cpp

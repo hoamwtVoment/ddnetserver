@@ -131,6 +131,12 @@ public:
 	int m_HoLang;
 	// Minecraft mace ownership (rcon ho_macehammer); cleared on death. Active mode in m_aHoWeaponMode[HAMMER]
 	bool m_HoMaceHammer;
+	// Gojo kit (rcon ho_gojo); cleared on death. Techniques via shotgun F3 modes.
+	bool m_HoGojo;
+	// Unlimited Void domain toggle (F3 无下限 option; not a fireable mode)
+	bool m_HoGojoUnlimitedVoid;
+	// Active controlled 苍 (blue) entity
+	class CHoGojoBlue *m_pHoGojoBlue;
 	// Per-weapon mode (0 = vanilla). Selected via F3 weapon select menu. Indices: hammer..ninja
 	static const int HO_WEAPON_MODE_SLOTS = 6;
 	int m_aHoWeaponMode[HO_WEAPON_MODE_SLOTS];

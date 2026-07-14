@@ -551,6 +551,7 @@ private:
 	static void ConHoFakeDeath(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoFlyMode(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoMaceHammer(IConsole::IResult *pResult, void *pUserData);
+	static void ConHoGojo(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoHeal(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoNinjaController(IConsole::IResult *pResult, void *pUserData);
 	static void ConHoLaserMode(IConsole::IResult *pResult, void *pUserData);

@@ -1,5 +1,6 @@
 #include "weaponselect.h"
 
+#include "gojo.h"
 #include "hp.h"
 
 #include <base/math.h>
@@ -62,7 +63,22 @@ namespace
 		int N = 0;
 		if(N < Max)
 			pOut[N++] = {HO_WPNMODE_VANILLA, POWERUP_WEAPON, WEAPON_SHOTGUN, "Shotgun", "Vanilla shotgun / freeze laser"};
-		(void)pPlayer;
+		if(pPlayer && pPlayer->m_HoGojo)
+		{
+			if(N < Max)
+				pOut[N++] = {HO_WPNMODE_SHOTGUN_BLUE, POWERUP_ARMOR, 0, "苍 Blue", "Hold charge, release: attractor you steer with cursor"};
+			if(N < Max)
+				pOut[N++] = {HO_WPNMODE_SHOTGUN_RED, POWERUP_HEALTH, 0, "赫 Red", "Hold charge, release: repulsion blast"};
+			if(N < Max)
+				pOut[N++] = {HO_WPNMODE_SHOTGUN_PURPLE, POWERUP_WEAPON, WEAPON_SHOTGUN, "茈 Purple", "Fixed size; 赫+苍 merge above head then launch"};
+			// Not a fireable mode — selecting toggles Unlimited Void on/off.
+			if(N < Max)
+			{
+				const char *pVoidName = pPlayer->m_HoGojoUnlimitedVoid ? "无下限 ON" : "无下限";
+				const char *pVoidDesc = pPlayer->m_HoGojoUnlimitedVoid ? "Select to collapse Unlimited Void" : "Select to expand Unlimited Void (not a weapon)";
+				pOut[N++] = {HO_WPNMODE_SHOTGUN_VOID, POWERUP_NINJA, 0, pVoidName, pVoidDesc};
+			}
+		}
 		return N;
 	}
 
@@ -450,6 +466,15 @@ bool HoWeaponSelectOnFire(CCharacter *pChr)
 
 	const int Slot = pOpt->WeaponSlot();
 	const int Mode = pOpt->ModeId();
+
+	// 无下限: toggle domain only — never becomes the active shotgun mode.
+	if(Slot == WEAPON_SHOTGUN && Mode == HO_WPNMODE_SHOTGUN_VOID)
+	{
+		HoGojoToggleUnlimitedVoid(pGameServer, pPlayer);
+		HoWeaponSelectClose(pGameServer, pPlayer, true);
+		return true;
+	}
+
 	HoWeaponSelectSetActiveMode(pPlayer, Slot, Mode);
 
 	// Brief mode name on HUD only (no chat).

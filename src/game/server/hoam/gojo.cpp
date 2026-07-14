@@ -1,0 +1,687 @@
+#include "gojo.h"
+
+#include "hp.h"
+#include "weaponselect.h"
+
+#include <base/math.h>
+#include <base/vmath.h>
+
+#include <engine/shared/config.h>
+
+#include <generated/protocol.h>
+
+#include <game/gamecore.h>
+#include <game/server/entities/character.h>
+#include <game/server/gamecontext.h>
+#include <game/server/player.h>
+
+#include <cmath>
+
+namespace
+{
+	constexpr float PI = 3.14159265358979323846f;
+
+	float ClampChargeFrac(int ChargeTicks)
+	{
+		const int MinT = std::max(1, g_Config.m_HoGojoChargeTicksMin);
+		const int MaxT = std::max(MinT, g_Config.m_HoGojoChargeTicksMax);
+		if(ChargeTicks <= 0)
+			return 0.0f;
+		if(ChargeTicks < MinT)
+			return (float)ChargeTicks / (float)MaxT;
+		const float t = (float)(ChargeTicks - MinT) / (float)(MaxT - MinT);
+		const float Base = (float)MinT / (float)MaxT;
+		return std::clamp(Base + t * (1.0f - Base), 0.0f, 1.0f);
+	}
+
+	float LerpF(float A, float B, float T)
+	{
+		return A + (B - A) * std::clamp(T, 0.0f, 1.0f);
+	}
+
+	int StableLaserTick(int SpawnTick, IServer *pServer)
+	{
+		int StartTick = SpawnTick;
+		if(StartTick < pServer->Tick() - 4)
+			StartTick = pServer->Tick() - 4;
+		else if(StartTick > pServer->Tick())
+			StartTick = pServer->Tick();
+		return StartTick;
+	}
+
+	void SnapOrb(CGameContext *pGameServer, int SnappingClient, int SnapId, vec2 Pos, float Radius, int Owner, int SpawnTick, int LaserType)
+	{
+		if(SnapId < 0)
+			return;
+		const float Ang = (pGameServer->Server()->Tick() % 50) * (2.0f * PI / 50.0f);
+		const vec2 A = Pos + vec2(std::cos(Ang), std::sin(Ang)) * Radius;
+		const vec2 B = Pos - vec2(std::cos(Ang), std::sin(Ang)) * Radius;
+		const int Version = pGameServer->GetClientVersion(SnappingClient);
+		pGameServer->SnapLaserObject(
+			CSnapContext(Version, pGameServer->Server()->IsSixup(SnappingClient), SnappingClient),
+			SnapId, B, A, StableLaserTick(SpawnTick, pGameServer->Server()), Owner, LaserType, 0, -1, LASERFLAG_NO_PREDICT);
+	}
+
+	bool CanHit(CCharacter *pOwner, CCharacter *pTarget)
+	{
+		if(!pOwner || !pTarget || !pTarget->IsAlive())
+			return false;
+		if(pTarget == pOwner)
+			return false;
+		if(!pOwner->CanCollide(pTarget->GetPlayer()->GetCid()))
+			return false;
+		// Unlimited Void blocks external techniques (pull/push/damage).
+		if(HoGojoVoidBlocksExternal(pTarget, pOwner->GetPlayer()->GetCid()))
+			return false;
+		return true;
+	}
+
+	void PullOrPush(CCharacter *pTarget, vec2 Center, float Strength, bool Attract)
+	{
+		vec2 Diff = pTarget->m_Pos - Center;
+		const float Len = length(Diff);
+		if(Len < 0.001f)
+			Diff = vec2(0.0f, -1.0f);
+		else
+			Diff = normalize(Diff);
+		const vec2 Force = Attract ? (-Diff * Strength) : (Diff * Strength);
+		pTarget->AddVelocity(Force);
+	}
+
+	void DamageInRadius(CCharacter *pOwner, vec2 Center, float Radius, int Damage, float ForceStr, bool Attract, int Weapon)
+	{
+		if(!pOwner || Damage < 0)
+			return;
+		CGameContext *pGameServer = pOwner->GameServer();
+		CEntity *apEnts[MAX_CLIENTS];
+		const int Num = pGameServer->m_World.FindEntities(Center, Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
+		for(int i = 0; i < Num; i++)
+		{
+			auto *pChr = static_cast<CCharacter *>(apEnts[i]);
+			if(!CanHit(pOwner, pChr))
+				continue;
+			if(ForceStr > 0.0f)
+				PullOrPush(pChr, Center, ForceStr, Attract);
+			if(Damage > 0)
+			{
+				pChr->TakeDamage(vec2(0, 0), Damage, pOwner->GetPlayer()->GetCid(), Weapon);
+				HoHpTakeDamage(pChr, Damage, pOwner->GetPlayer()->GetCid(), Weapon);
+			}
+		}
+	}
+}
+
+bool HoGojoOwned(const CPlayer *pPlayer)
+{
+	return pPlayer && pPlayer->m_HoGojo;
+}
+
+bool HoGojoVoidActive(const CPlayer *pPlayer)
+{
+	return HoGojoOwned(pPlayer) && pPlayer->m_HoGojoUnlimitedVoid;
+}
+
+float HoGojoVoidRadius()
+{
+	return (float)std::max(32, g_Config.m_HoGojoVoidRadius);
+}
+
+bool HoGojoVoidBlocksExternal(const CCharacter *pVictim, int FromCid)
+{
+	if(!pVictim || !pVictim->IsAlive())
+		return false;
+	const CPlayer *pPlayer = pVictim->GetPlayer();
+	if(!HoGojoVoidActive(pPlayer))
+		return false;
+	// Own weapons still work (self is not "external").
+	if(FromCid == pPlayer->GetCid())
+		return false;
+	return true;
+}
+
+int HoGojoShotgunMode(const CPlayer *pPlayer)
+{
+	if(!HoGojoOwned(pPlayer))
+		return HO_WPNMODE_VANILLA;
+	const int Mode = HoWeaponSelectActiveMode(pPlayer, WEAPON_SHOTGUN);
+	// 无下限 is a toggle option, never a fireable active mode.
+	if(Mode == HO_WPNMODE_SHOTGUN_VOID)
+		return HO_WPNMODE_VANILLA;
+	return Mode;
+}
+
+bool HoGojoTechniqueMode(const CPlayer *pPlayer)
+{
+	const int Mode = HoGojoShotgunMode(pPlayer);
+	return Mode == HO_WPNMODE_SHOTGUN_BLUE || Mode == HO_WPNMODE_SHOTGUN_RED || Mode == HO_WPNMODE_SHOTGUN_PURPLE;
+}
+
+// Stick foreign hooks on the void sphere surface (do not attach to the body).
+static void HoGojoVoidRedirectHook(CCharacter *pHooker, vec2 VoidCenter, float Radius)
+{
+	if(!pHooker)
+		return;
+	vec2 From = pHooker->GetPos();
+	vec2 Diff = From - VoidCenter;
+	if(length(Diff) < 0.001f)
+		Diff = vec2(0.0f, -1.0f);
+	else
+		Diff = normalize(Diff);
+	// Surface point facing the hooker (around the void user, not on their body).
+	const vec2 Surface = VoidCenter + Diff * Radius;
+	pHooker->SetHookGrabWorld(Surface);
+}
+
+static void HoGojoVoidProtectHooks(CCharacter *pVoidChr)
+{
+	if(!pVoidChr || !HoGojoVoidActive(pVoidChr->GetPlayer()))
+		return;
+
+	CGameContext *pGameServer = pVoidChr->GameServer();
+	const int VoidId = pVoidChr->GetPlayer()->GetCid();
+	const vec2 Center = pVoidChr->GetPos();
+	const float Radius = HoGojoVoidRadius();
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(i == VoidId)
+			continue;
+		CCharacter *pOther = pGameServer->GetPlayerChar(i);
+		if(!pOther || !pOther->IsAlive())
+			continue;
+
+		const CCharacterCore *pCore = pOther->Core();
+		// Already attached to void user → peel off onto sphere.
+		if(pCore->HookedPlayer() == VoidId)
+		{
+			HoGojoVoidRedirectHook(pOther, Center, Radius);
+			continue;
+		}
+
+		// Flying hook that enters / would enter the sphere.
+		if(pCore->m_HookState == HOOK_FLYING)
+		{
+			const vec2 HookPos = pCore->m_HookPos;
+			vec2 Closest;
+			if(closest_point_on_line(pOther->GetPos(), HookPos, Center, Closest))
+			{
+				if(distance(Closest, Center) <= Radius)
+					HoGojoVoidRedirectHook(pOther, Center, Radius);
+			}
+			else if(distance(HookPos, Center) <= Radius)
+			{
+				HoGojoVoidRedirectHook(pOther, Center, Radius);
+			}
+		}
+		// Ground-grabbed hook tip pushed into sphere while void user walks into it.
+		else if(pCore->m_HookState == HOOK_GRABBED && pCore->HookedPlayer() == -1)
+		{
+			if(distance(pCore->m_HookPos, Center) < Radius - 2.0f)
+				HoGojoVoidRedirectHook(pOther, Center, Radius);
+		}
+	}
+}
+
+void HoGojoClearBlue(CPlayer *pPlayer)
+{
+	if(!pPlayer || !pPlayer->m_pHoGojoBlue)
+		return;
+	pPlayer->m_pHoGojoBlue->Reset();
+	pPlayer->m_pHoGojoBlue = nullptr;
+}
+
+void HoGojoOnDeath(CPlayer *pPlayer)
+{
+	if(!pPlayer)
+		return;
+	HoGojoClearBlue(pPlayer);
+	pPlayer->m_HoGojo = false;
+	pPlayer->m_HoGojoUnlimitedVoid = false;
+	pPlayer->m_aHoWeaponMode[WEAPON_SHOTGUN] = HO_WPNMODE_VANILLA;
+}
+
+void HoGojoToggleUnlimitedVoid(CGameContext *pGameServer, CPlayer *pPlayer)
+{
+	if(!pGameServer || !pPlayer || !pPlayer->m_HoGojo)
+		return;
+	pPlayer->m_HoGojoUnlimitedVoid = !pPlayer->m_HoGojoUnlimitedVoid;
+	if(pPlayer->m_HoGojoUnlimitedVoid)
+	{
+		pGameServer->SendChatTarget(pPlayer->GetCid(), "无下限：展开");
+		pGameServer->SendBroadcast("Unlimited Void ON", pPlayer->GetCid(), true);
+		if(CCharacter *pChr = pPlayer->GetCharacter())
+			pGameServer->CreateSound(pChr->GetPos(), SOUND_NINJA_HIT, pChr->TeamMask());
+	}
+	else
+	{
+		pGameServer->SendChatTarget(pPlayer->GetCid(), "无下限：解除");
+		pGameServer->SendBroadcast("Unlimited Void OFF", pPlayer->GetCid(), true);
+	}
+}
+
+// --- Blue (controllable) ---
+
+CHoGojoBlue::CHoGojoBlue(CGameWorld *pGameWorld, int Owner, vec2 Pos, float Radius) :
+	CEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, true, Pos, (int)Radius),
+	m_Owner(Owner),
+	m_Radius(Radius),
+	m_Life(std::max(10, g_Config.m_HoGojoBlueLife)),
+	m_LastDamageTick(0),
+	m_SpawnTick(0)
+{
+	m_SpawnTick = Server()->Tick();
+	GameWorld()->InsertEntity(this);
+	if(Owner >= 0 && Owner < MAX_CLIENTS && GameServer()->m_apPlayers[Owner])
+	{
+		if(GameServer()->m_apPlayers[Owner]->m_pHoGojoBlue)
+			GameServer()->m_apPlayers[Owner]->m_pHoGojoBlue->Reset();
+		GameServer()->m_apPlayers[Owner]->m_pHoGojoBlue = this;
+	}
+	if(CCharacter *pOwner = GameServer()->GetPlayerChar(Owner))
+		GameServer()->CreateSound(Pos, SOUND_LASER_FIRE, pOwner->TeamMask());
+}
+
+void CHoGojoBlue::Reset()
+{
+	if(m_Owner >= 0 && m_Owner < MAX_CLIENTS && GameServer()->m_apPlayers[m_Owner] &&
+		GameServer()->m_apPlayers[m_Owner]->m_pHoGojoBlue == this)
+	{
+		GameServer()->m_apPlayers[m_Owner]->m_pHoGojoBlue = nullptr;
+	}
+	m_MarkedForDestroy = true;
+}
+
+void CHoGojoBlue::Tick()
+{
+	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
+	if(!pOwner || !pOwner->IsAlive() || m_Life-- <= 0)
+	{
+		Reset();
+		return;
+	}
+
+	// Control: move toward owner's cursor world position.
+	const vec2 Target = pOwner->GetPlayer()->m_CameraInfo.ConvertTargetToWorld(
+		pOwner->GetPos(), vec2(pOwner->Core()->m_Input.m_TargetX, pOwner->Core()->m_Input.m_TargetY));
+
+	const float Ctrl = std::max(1.0f, (float)g_Config.m_HoGojoBlueControlSpeed);
+	vec2 Diff = Target - m_Pos;
+	const float Dist = length(Diff);
+	if(Dist > 1.0f)
+	{
+		const float Step = std::min(Dist, Ctrl);
+		const vec2 Next = m_Pos + normalize(Diff) * Step;
+		// Soft wall stop (do not enter solid).
+		if(!Collision()->TestBox(Next, vec2(14.0f, 14.0f)))
+			m_Pos = Next;
+		else if(!Collision()->TestBox(vec2(Next.x, m_Pos.y), vec2(14.0f, 14.0f)))
+			m_Pos.x = Next.x;
+		else if(!Collision()->TestBox(vec2(m_Pos.x, Next.y), vec2(14.0f, 14.0f)))
+			m_Pos.y = Next.y;
+	}
+
+	// Attraction each tick.
+	const float Pull = std::max(0.0f, g_Config.m_HoGojoBluePull / 10.0f);
+	CEntity *apEnts[MAX_CLIENTS];
+	const int Num = GameServer()->m_World.FindEntities(m_Pos, m_Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
+	for(int i = 0; i < Num; i++)
+	{
+		auto *pChr = static_cast<CCharacter *>(apEnts[i]);
+		if(!CanHit(pOwner, pChr))
+			continue;
+		const float DistT = length(pChr->m_Pos - m_Pos);
+		const float Falloff = 1.0f - std::clamp(DistT / m_Radius, 0.0f, 1.0f);
+		PullOrPush(pChr, m_Pos, Pull * (0.35f + 0.65f * Falloff), true);
+	}
+
+	const int DmgDelay = std::max(1, g_Config.m_HoGojoBlueDamageDelay);
+	if(Server()->Tick() >= m_LastDamageTick + DmgDelay)
+	{
+		m_LastDamageTick = Server()->Tick();
+		const int Dmg = std::max(0, g_Config.m_HoGojoBlueDamage);
+		if(Dmg > 0)
+			DamageInRadius(pOwner, m_Pos, m_Radius, Dmg, 0.0f, true, WEAPON_SHOTGUN);
+	}
+
+	if(Server()->Tick() % 4 == 0)
+		GameServer()->CreateDamageInd(m_Pos, Server()->Tick() * 0.3f, 1, pOwner->TeamMask());
+}
+
+void CHoGojoBlue::Snap(int SnappingClient)
+{
+	if(NetworkClipped(SnappingClient) || !GetId().has_value())
+		return;
+	SnapOrb(GameServer(), SnappingClient, GetId().value(), m_Pos, m_Radius, m_Owner, m_SpawnTick, LASERTYPE_SHOTGUN);
+}
+
+void CHoGojoBlue::SwapClients(int Client1, int Client2)
+{
+	m_Owner = m_Owner == Client1 ? Client2 : (m_Owner == Client2 ? Client1 : m_Owner);
+}
+
+// --- Red / Purple projectile ---
+
+CHoGojoProjectile::CHoGojoProjectile(CGameWorld *pGameWorld, int Owner, vec2 Pos, vec2 Dir, float Radius, int Type) :
+	CEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, true, Pos, (int)Radius),
+	m_Owner(Owner),
+	m_Dir(Dir),
+	m_Radius(Radius),
+	m_Type(Type),
+	m_Life(0),
+	m_SpawnTick(0)
+{
+	if(length(m_Dir) > 0.001f)
+		m_Dir = normalize(m_Dir);
+	else
+		m_Dir = vec2(1, 0);
+	m_Life = m_Type == TYPE_PURPLE ? std::max(10, g_Config.m_HoGojoPurpleLife) : std::max(10, g_Config.m_HoGojoRedLife);
+	m_SpawnTick = Server()->Tick();
+	GameWorld()->InsertEntity(this);
+	if(CCharacter *pOwner = GameServer()->GetPlayerChar(Owner))
+		GameServer()->CreateSound(Pos, m_Type == TYPE_PURPLE ? SOUND_GRENADE_EXPLODE : SOUND_GRENADE_FIRE, pOwner->TeamMask());
+}
+
+void CHoGojoProjectile::Reset()
+{
+	m_MarkedForDestroy = true;
+}
+
+void CHoGojoProjectile::ApplyAoE(bool FinalBurst)
+{
+	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
+	if(!pOwner)
+		return;
+	const int Dmg = m_Type == TYPE_PURPLE ? std::max(0, g_Config.m_HoGojoPurpleDamage) : std::max(0, g_Config.m_HoGojoRedDamage);
+	const float Push = m_Type == TYPE_PURPLE ? (float)g_Config.m_HoGojoPurplePush / 10.0f : (float)g_Config.m_HoGojoRedPush / 10.0f;
+	const float Mult = FinalBurst ? 1.5f : 1.0f;
+	// Red/Purple repel.
+	DamageInRadius(pOwner, m_Pos, m_Radius, FinalBurst ? Dmg : std::max(0, Dmg / 3), Push * Mult, false, WEAPON_SHOTGUN);
+	if(FinalBurst || Server()->Tick() % 3 == 0)
+		GameServer()->CreateExplosion(m_Pos, m_Owner, WEAPON_SHOTGUN, true, -1, pOwner->TeamMask());
+}
+
+void CHoGojoProjectile::Tick()
+{
+	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
+	if(!pOwner || !pOwner->IsAlive() || m_Life-- <= 0)
+	{
+		ApplyAoE(true);
+		Reset();
+		return;
+	}
+
+	const float Speed = m_Type == TYPE_PURPLE ? (float)std::max(1, g_Config.m_HoGojoPurpleSpeed) : (float)std::max(1, g_Config.m_HoGojoRedSpeed);
+	const vec2 Next = m_Pos + m_Dir * Speed;
+	vec2 ColPos;
+	if(Collision()->IntersectLine(m_Pos, Next, &ColPos, nullptr))
+	{
+		m_Pos = ColPos;
+		ApplyAoE(true);
+		Reset();
+		return;
+	}
+	m_Pos = Next;
+	ApplyAoE(false);
+}
+
+void CHoGojoProjectile::Snap(int SnappingClient)
+{
+	if(NetworkClipped(SnappingClient) || !GetId().has_value())
+		return;
+	const int LaserType = m_Type == TYPE_PURPLE ? LASERTYPE_RIFLE : LASERTYPE_GUN;
+	SnapOrb(GameServer(), SnappingClient, GetId().value(), m_Pos, m_Radius, m_Owner, m_SpawnTick, LaserType);
+}
+
+void CHoGojoProjectile::SwapClients(int Client1, int Client2)
+{
+	m_Owner = m_Owner == Client1 ? Client2 : (m_Owner == Client2 ? Client1 : m_Owner);
+}
+
+// --- Charge / cast / void ---
+
+void HoGojoApplyChargeTuning(CCharacter *pChr, CTuningParams *pTuning)
+{
+	if(!pChr || !pTuning)
+		return;
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!HoGojoOwned(pPlayer))
+		return;
+
+	float SlowFrac = 0.0f;
+
+	// Charge slow (larger charge → slower).
+	if(pChr->m_HoGojoChargeTicks > 0)
+	{
+		const float Frac = ClampChargeFrac(pChr->m_HoGojoChargeTicks);
+		const float Floor = std::clamp(g_Config.m_HoGojoChargeSpeedMin, 5, 100) / 100.0f;
+		// Frac 0 → 100% speed, Frac 1 → Floor speed.
+		const float Remain = 1.0f - (1.0f - Floor) * Frac;
+		SlowFrac = std::max(SlowFrac, 1.0f - Remain);
+	}
+
+	// Purple merge also pins movement.
+	if(pChr->m_HoGojoPurpleMergeLeft > 0)
+		SlowFrac = std::max(SlowFrac, 0.75f);
+
+	// Standing in own void: mild self slow optional — skip, only affect others in Tick.
+
+	if(SlowFrac <= 0.0f)
+		return;
+
+	const float Remain = std::clamp(1.0f - SlowFrac, 0.05f, 1.0f);
+	pTuning->m_GroundControlSpeed = (float)pTuning->m_GroundControlSpeed * Remain;
+	pTuning->m_GroundControlAccel = (float)pTuning->m_GroundControlAccel * Remain;
+	pTuning->m_AirControlSpeed = (float)pTuning->m_AirControlSpeed * Remain;
+	pTuning->m_AirControlAccel = (float)pTuning->m_AirControlAccel * Remain;
+}
+
+static void HoGojoTickVoidDomain(CCharacter *pOwner)
+{
+	CPlayer *pPlayer = pOwner->GetPlayer();
+	if(!HoGojoVoidActive(pPlayer))
+	{
+		// Restore collision if we disabled it for void.
+		if(pOwner->m_HoGojoVoidHadCollisionOff)
+		{
+			pOwner->SetCollisionDisabled(false);
+			pOwner->m_HoGojoVoidHadCollisionOff = false;
+		}
+		return;
+	}
+
+	CGameContext *pGameServer = pOwner->GameServer();
+	const float Radius = HoGojoVoidRadius();
+	const float Damp = std::clamp(g_Config.m_HoGojoVoidDamp, 10, 100) / 100.0f;
+
+	// External body collision / pushes do not affect the void user.
+	if(!pOwner->Core()->m_CollisionDisabled)
+	{
+		pOwner->SetCollisionDisabled(true);
+		pOwner->m_HoGojoVoidHadCollisionOff = true;
+	}
+
+	// Hooks stop on the sphere around the user (not on the body).
+	HoGojoVoidProtectHooks(pOwner);
+
+	CEntity *apEnts[MAX_CLIENTS];
+	const int Num = pGameServer->m_World.FindEntities(pOwner->m_Pos, Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
+	for(int i = 0; i < Num; i++)
+	{
+		auto *pChr = static_cast<CCharacter *>(apEnts[i]);
+		if(!CanHit(pOwner, pChr))
+			continue;
+		// Information overload: crush velocity toward zero.
+		pChr->SetVelocity(pChr->Core()->m_Vel * Damp);
+		if(pGameServer->Server()->Tick() % 8 == 0)
+			pGameServer->CreateDamageInd(pChr->m_Pos, 0, 1, pOwner->TeamMask());
+	}
+
+	// Domain ring visual.
+	if(pGameServer->Server()->Tick() % 2 == 0)
+	{
+		const float Ang = (pGameServer->Server()->Tick() % 60) * (2.0f * PI / 60.0f);
+		const vec2 Edge = pOwner->m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * Radius;
+		pGameServer->CreateHammerHit(Edge, pOwner->TeamMask());
+	}
+}
+
+static void HoGojoStartPurpleMerge(CCharacter *pChr, vec2 Dir)
+{
+	pChr->m_HoGojoPurpleMergeLeft = std::max(5, g_Config.m_HoGojoPurpleMergeTicks);
+	pChr->m_HoGojoPurpleDir = Dir;
+	pChr->m_HoGojoChargeTicks = 0;
+	if(CGameContext *pGameServer = pChr->GameServer())
+		pGameServer->CreateSound(pChr->GetPos(), SOUND_WEAPON_SPAWN, pChr->TeamMask());
+}
+
+static void HoGojoTickPurpleMerge(CCharacter *pChr)
+{
+	if(pChr->m_HoGojoPurpleMergeLeft <= 0)
+		return;
+
+	CGameContext *pGameServer = pChr->GameServer();
+	const int Total = std::max(5, g_Config.m_HoGojoPurpleMergeTicks);
+	const int Left = pChr->m_HoGojoPurpleMergeLeft;
+	const float Progress = 1.0f - (float)Left / (float)Total; // 0 → 1
+
+	// Head: slightly above tee. 苍 left, 赫 right → merge to center.
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -46.0f);
+	const float Spread = 72.0f * (1.0f - Progress);
+	const vec2 BluePos = Head + vec2(-Spread, -8.0f * (1.0f - Progress));
+	const vec2 RedPos = Head + vec2(Spread, -8.0f * (1.0f - Progress));
+
+	// Visual: damage sparks + hammer hits traveling inward.
+	pGameServer->CreateDamageInd(BluePos, PI, 2, pChr->TeamMask());
+	pGameServer->CreateDamageInd(RedPos, 0.0f, 2, pChr->TeamMask());
+	if(pGameServer->Server()->Tick() % 2 == 0)
+	{
+		pGameServer->CreateHammerHit(BluePos, pChr->TeamMask());
+		pGameServer->CreateHammerHit(RedPos, pChr->TeamMask());
+	}
+	// Laser-like segment between the two orbs (using explosion-free feedback).
+	if(Progress > 0.15f)
+		pGameServer->CreateDamageInd(Head, Progress * PI * 2.0f, 1, pChr->TeamMask());
+
+	pChr->m_HoGojoPurpleMergeLeft--;
+	if(pChr->m_HoGojoPurpleMergeLeft > 0)
+		return;
+
+	// Fusion complete → fixed-size 茈.
+	const float Radius = (float)std::max(16, g_Config.m_HoGojoPurpleRadius);
+	vec2 Dir = pChr->m_HoGojoPurpleDir;
+	if(length(Dir) < 0.001f)
+		Dir = vec2(1, 0);
+	const vec2 Start = pChr->m_Pos + normalize(Dir) * 28.0f;
+	new CHoGojoProjectile(&pGameServer->m_World, pChr->GetPlayer()->GetCid(), Start, Dir, Radius, CHoGojoProjectile::TYPE_PURPLE);
+	pGameServer->CreateExplosion(Head, pChr->GetPlayer()->GetCid(), WEAPON_SHOTGUN, true, -1, pChr->TeamMask());
+	pGameServer->CreateSound(pChr->GetPos(), SOUND_GRENADE_EXPLODE, pChr->TeamMask());
+}
+
+static void HoGojoCast(CCharacter *pChr, int Mode, int ChargeTicks, vec2 Dir)
+{
+	CGameContext *pGameServer = pChr->GameServer();
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!pGameServer || !pPlayer)
+		return;
+
+	const float Frac = ClampChargeFrac(ChargeTicks);
+	if(length(Dir) < 0.001f)
+		Dir = vec2(1, 0);
+	else
+		Dir = normalize(Dir);
+
+	if(Mode == HO_WPNMODE_SHOTGUN_BLUE)
+	{
+		const float R = LerpF((float)g_Config.m_HoGojoBlueRadiusMin, (float)g_Config.m_HoGojoBlueRadiusMax, Frac);
+		const vec2 Start = pChr->m_Pos + Dir * 36.0f;
+		new CHoGojoBlue(&pGameServer->m_World, pPlayer->GetCid(), Start, R);
+	}
+	else if(Mode == HO_WPNMODE_SHOTGUN_RED)
+	{
+		const float R = LerpF((float)g_Config.m_HoGojoRedRadiusMin, (float)g_Config.m_HoGojoRedRadiusMax, Frac);
+		const vec2 Start = pChr->m_Pos + Dir * 28.0f;
+		new CHoGojoProjectile(&pGameServer->m_World, pPlayer->GetCid(), Start, Dir, R, CHoGojoProjectile::TYPE_RED);
+	}
+	else if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
+	{
+		// Fixed size; charge only gates minimum hold, then merge animation.
+		HoGojoStartPurpleMerge(pChr, Dir);
+	}
+}
+
+void HoGojoTickCharacter(CCharacter *pChr)
+{
+	if(!pChr || !pChr->IsAlive())
+		return;
+
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!HoGojoOwned(pPlayer))
+	{
+		pChr->m_HoGojoChargeTicks = 0;
+		pChr->m_HoGojoFireHeld = false;
+		pChr->m_HoGojoPurpleMergeLeft = 0;
+		return;
+	}
+
+	// Domain each tick while active.
+	HoGojoTickVoidDomain(pChr);
+
+	// Purple merge locks casting.
+	if(pChr->m_HoGojoPurpleMergeLeft > 0)
+	{
+		HoGojoTickPurpleMerge(pChr);
+		pChr->m_HoGojoChargeTicks = 0;
+		pChr->m_HoGojoFireHeld = false;
+		return;
+	}
+
+	if(!HoGojoTechniqueMode(pPlayer) || pChr->GetActiveWeapon() != WEAPON_SHOTGUN || pChr->m_FreezeTime > 0 ||
+		pPlayer->m_HoWeaponSelectOpen)
+	{
+		pChr->m_HoGojoChargeTicks = 0;
+		pChr->m_HoGojoFireHeld = false;
+		return;
+	}
+
+	const CCharacterCore *pCore = pChr->Core();
+	const bool Fire = (pCore->m_Input.m_Fire & 1) != 0;
+	const int Mode = HoGojoShotgunMode(pPlayer);
+	const int MinT = std::max(1, g_Config.m_HoGojoChargeTicksMin);
+	const int MaxT = std::max(MinT, g_Config.m_HoGojoChargeTicksMax);
+
+	if(Fire)
+	{
+		if(pChr->m_HoGojoChargeTicks < MaxT)
+			pChr->m_HoGojoChargeTicks++;
+		// Charge VFX density scales with charge.
+		if(pChr->m_HoGojoChargeTicks > 0 && pChr->GameServer()->Server()->Tick() % 3 == 0)
+		{
+			const float Frac = ClampChargeFrac(pChr->m_HoGojoChargeTicks);
+			const float Orbit = 20.0f + Frac * 40.0f;
+			const float Ang = pChr->GameServer()->Server()->Tick() * 0.4f;
+			const vec2 P = pChr->m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * Orbit;
+			pChr->GameServer()->CreateDamageInd(P, Ang, 1, pChr->TeamMask());
+		}
+		pChr->m_HoGojoFireHeld = true;
+	}
+	else if(pChr->m_HoGojoFireHeld)
+	{
+		// Release: cast if past minimum.
+		if(pChr->m_HoGojoChargeTicks >= MinT)
+		{
+			const vec2 Mouse((float)pCore->m_Input.m_TargetX, (float)pCore->m_Input.m_TargetY);
+			vec2 Dir = Mouse;
+			if(length(Dir) > 0.001f)
+				Dir = normalize(Dir);
+			else
+				Dir = vec2(1, 0);
+			HoGojoCast(pChr, Mode, pChr->m_HoGojoChargeTicks, Dir);
+		}
+		pChr->m_HoGojoChargeTicks = 0;
+		pChr->m_HoGojoFireHeld = false;
+	}
+	else
+	{
+		pChr->m_HoGojoChargeTicks = 0;
+	}
+}

@@ -7,6 +7,7 @@
 #include "entity.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
+#include "hoam/gojo.h"
 
 #include <engine/shared/config.h>
 
@@ -311,6 +312,15 @@ CEntity *CGameWorld::IntersectEntity(vec2 Pos0, vec2 Pos1, float Radius, int Typ
 
 		if(CollideWith != -1 && !pEntity->CanCollide(CollideWith))
 			continue;
+
+		// Unlimited Void: external projectiles/lasers do not hit the domain user.
+		// Own weapons (CollideWith == self) still work. World rays with CollideWith==-1 skip this path.
+		if(Type == ENTTYPE_CHARACTER && CollideWith != -1)
+		{
+			auto *pChr = static_cast<CCharacter *>(pEntity);
+			if(HoGojoVoidBlocksExternal(pChr, CollideWith))
+				continue;
+		}
 
 		vec2 IntersectPos;
 		if(closest_point_on_line(Pos0, Pos1, pEntity->m_Pos, IntersectPos))

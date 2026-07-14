@@ -1,6 +1,7 @@
 #include "hp.h"
 
 #include "fracture.h"
+#include "gojo.h"
 
 #include <base/str.h>
 
@@ -282,6 +283,10 @@ bool HoHpTakeDamage(CCharacter *pChr, int Damage, int Killer, int Weapon, bool S
 		return false;
 
 	if(pChr->IsSuper() || pChr->Core()->m_Invincible)
+		return false;
+
+	// Unlimited Void: no external HP damage (others + world). Own weapons still damage others.
+	if(HoGojoVoidBlocksExternal(pChr, Killer))
 		return false;
 
 	if(pChr->m_HoHp > Max)

@@ -18,6 +18,11 @@ enum
 	HO_WPNMODE_LASER_PORTAL2 = 2,
 	HO_WPNMODE_LASER_CANNON = 3, // continuous beam, no bounce
 	HO_WPNMODE_LASER_CANNON_LOCK = 4, // auto-aim nearest-to-crosshair, still blocked by first hit
+	// Shotgun extras (ho_gojo)
+	HO_WPNMODE_SHOTGUN_BLUE = 1, // 苍 — charge, controllable attractor
+	HO_WPNMODE_SHOTGUN_RED = 2, // 赫 — charge, repulsion projectile
+	HO_WPNMODE_SHOTGUN_PURPLE = 3, // 茈 — fixed size; red+blue merge then launch
+	HO_WPNMODE_SHOTGUN_VOID = 4, // 无下限 — F3 toggle only (not a weapon)
 	// Ninja extras
 	HO_WPNMODE_NINJA_CONTROLLER = 1, // gravity grab controller
 };
