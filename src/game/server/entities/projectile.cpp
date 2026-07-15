@@ -44,6 +44,7 @@ CProjectile::CProjectile(
 
 	m_InitDir = InitDir;
 	m_StuckOnVoid = false;
+	m_VoidTargetCid = -1;
 	m_TuneZone = GameServer()->Collision()->IsTune(GameServer()->Collision()->GetMapIndex(m_Pos));
 
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
@@ -88,11 +89,35 @@ vec2 CProjectile::GetPos(float Time)
 
 void CProjectile::Tick()
 {
-	// Stuck on Unlimited Void shell: stay put, no explode, quiet despawn.
+	// Resting on Unlimited Void shell: follow domain (no mid-air orphan), no explode.
 	if(m_StuckOnVoid)
 	{
 		if(m_LifeSpan > -1)
 			m_LifeSpan--;
+		CCharacter *pVoid = (m_VoidTargetCid >= 0) ? GameServer()->GetPlayerChar(m_VoidTargetCid) : nullptr;
+		if(!pVoid || !pVoid->IsAlive() || !HoGojoVoidActive(pVoid->GetPlayer()))
+		{
+			// Domain gone — drop with tiny velocity so client sees release, then despawn soon.
+			m_StuckOnVoid = false;
+			m_VoidTargetCid = -1;
+			m_Direction = vec2(0.0f, 0.15f);
+			m_StartTick = Server()->Tick();
+			if(m_LifeSpan < 0 || m_LifeSpan > Server()->TickSpeed() / 2)
+				m_LifeSpan = Server()->TickSpeed() / 2;
+		}
+		else
+		{
+			const vec2 C = pVoid->GetPos();
+			const float R = HoGojoVoidRadius();
+			vec2 Out = m_Pos - C;
+			if(length(Out) < 0.001f)
+				Out = vec2(0.0f, -1.0f);
+			// Pin to current shell + rebase so clients do not predict a fly-through.
+			m_Pos = C + normalize(Out) * R;
+			m_Direction = vec2(0.0f, 0.0f);
+			m_StartTick = Server()->Tick();
+			m_InitDir = vec2(0.0f, 0.0f);
+		}
 		if(m_LifeSpan <= 0)
 			m_MarkedForDestroy = true;
 		return;
@@ -110,23 +135,53 @@ void CProjectile::Tick()
 	if(m_Owner >= 0)
 		pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 
-	// Unlimited Void: stick on domain shell (grenade does NOT explode).
-	vec2 VoidHit;
-	if(HoGojoVoidClipSegment(GameServer(), PrevPos, CurPos, m_Owner, &VoidHit))
+	// Unlimited Void Infinity: slower nearer the shell; rebase trajectory for client sync.
+	float VoidFactor = 1.0f;
+	int VoidCid = -1;
+	const vec2 SoftPos = HoGojoVoidSoftMove(GameServer(), PrevPos, CurPos, m_Owner, &VoidFactor, &VoidCid);
+	if(VoidFactor < 0.999f || distance(SoftPos, CurPos) > 0.5f)
 	{
+		// Wall still wins if closer than soft end.
 		const float DistWall = Collide ? distance(PrevPos, ColPos) : 1e9f;
-		const float DistVoid = distance(PrevPos, VoidHit);
-		if(DistVoid <= DistWall)
+		const float DistSoft = distance(PrevPos, SoftPos);
+		if(DistSoft <= DistWall)
 		{
-			m_StuckOnVoid = true;
-			m_Pos = VoidHit;
-			m_Direction = vec2(0.0f, 0.0f);
+			// Rebase: m_Direction is velocity for CalcPos; match one-tick soft delta.
+			float Speed = 1.0f;
+			CTuningParams *pTuning = GetTuning(m_TuneZone);
+			if(m_Type == WEAPON_GRENADE)
+				Speed = std::max(0.001f, (float)pTuning->m_GrenadeSpeed);
+			else if(m_Type == WEAPON_GUN)
+				Speed = std::max(0.001f, (float)pTuning->m_GunSpeed);
+			else if(m_Type == WEAPON_SHOTGUN)
+				Speed = std::max(0.001f, (float)pTuning->m_ShotgunSpeed);
+
+			const vec2 Delta = SoftPos - PrevPos;
+			// Velocity such that over dt=1/TickSpeed, displacement ≈ Delta (ignore curvature for one tick).
+			const float Dt = 1.0f / (float)Server()->TickSpeed();
+			m_Pos = SoftPos;
+			m_Direction = (Dt > 0.0f && Speed > 0.0f) ? (Delta / (Speed * Dt)) : vec2(0.0f, 0.0f);
 			m_StartTick = Server()->Tick();
-			// Hold at least void-hold ticks if remaining life is short.
-			const int Hold = std::max(10, g_Config.m_HoGojoVoidHoldTicks);
-			if(m_LifeSpan >= 0 && m_LifeSpan < Hold)
-				m_LifeSpan = Hold;
-			return;
+			m_InitDir = m_Direction;
+
+			if(VoidFactor < 0.08f && VoidCid >= 0)
+			{
+				// Settled on shell — no explode, track domain.
+				m_StuckOnVoid = true;
+				m_VoidTargetCid = VoidCid;
+				m_Direction = vec2(0.0f, 0.0f);
+				m_InitDir = vec2(0.0f, 0.0f);
+				const int Hold = std::max(10, g_Config.m_HoGojoVoidHoldTicks);
+				if(m_LifeSpan >= 0 && m_LifeSpan < Hold)
+					m_LifeSpan = Hold;
+			}
+
+			// Use soft path as the rest of the tick's positions (no wall/player hit beyond soft).
+			CurPos = SoftPos;
+			ColPos = SoftPos;
+			Collide = 0;
+			// Skip character hits past the soft tip this tick.
+			PrevPos = SoftPos;
 		}
 	}
 

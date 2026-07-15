@@ -108,8 +108,13 @@ float HoGojoVoidRadius();
 
 // Clip a shot segment against foreign Unlimited Void spheres (own void ignored).
 // Returns true if clipped; *pHit is the stop point on the sphere surface.
-// Covers gun/grenade projectiles and shotgun/laser rays.
 bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int ShooterCid, vec2 *pHit);
+
+// Infinity: movement gets slower the closer to a foreign void shell (cannot enter).
+// Returns the allowed end position; *pFactor is remaining speed 0..1; *pVoidCid nearest void or -1.
+vec2 HoGojoVoidSoftMove(CGameContext *pGameServer, vec2 From, vec2 To, int IgnoreCid, float *pFactor = nullptr, int *pVoidCid = nullptr);
+// Outer influence radius (soft zone starts here).
+float HoGojoVoidOuterRadius();
 
 // Per-character: charge, purple merge, movement slow, void domain + barrier.
 void HoGojoTickCharacter(CCharacter *pChr);

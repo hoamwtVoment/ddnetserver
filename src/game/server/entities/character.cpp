@@ -900,6 +900,12 @@ void CCharacter::SetHookGrabWorld(vec2 Pos)
 	m_Core.m_HookTick = 0;
 }
 
+void CCharacter::SetHookTipPos(vec2 Pos)
+{
+	m_Core.m_HookPos = Pos;
+	m_Core.m_HookTick = 0;
+}
+
 void CCharacter::ReleaseHook()
 {
 	m_Core.SetHookedPlayer(-1);

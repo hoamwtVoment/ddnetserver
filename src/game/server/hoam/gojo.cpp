@@ -172,6 +172,12 @@ float HoGojoVoidRadius()
 	return (float)std::max(32, g_Config.m_HoGojoVoidRadius);
 }
 
+float HoGojoVoidOuterRadius()
+{
+	// Soft influence zone (Infinity): farther out, still slows objects.
+	return HoGojoVoidRadius() * 2.25f;
+}
+
 bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int ShooterCid, vec2 *pHit)
 {
 	if(!pGameServer)
@@ -214,6 +220,102 @@ bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int Sh
 	return Any;
 }
 
+// Speed remain factor by distance to shell: 1 far away, ~0 on the shell.
+static float VoidApproachFactor(float Dist, float Radius, float Outer)
+{
+	if(Dist >= Outer)
+		return 1.0f;
+	if(Dist <= Radius)
+		return 0.0f;
+	const float T = (Dist - Radius) / (Outer - Radius);
+	// Quadratic falloff: still moves mid-zone, crawls near shell.
+	return T * T;
+}
+
+vec2 HoGojoVoidSoftMove(CGameContext *pGameServer, vec2 From, vec2 To, int IgnoreCid, float *pFactor, int *pVoidCid)
+{
+	if(pFactor)
+		*pFactor = 1.0f;
+	if(pVoidCid)
+		*pVoidCid = -1;
+	if(!pGameServer)
+		return To;
+
+	const float Radius = HoGojoVoidRadius();
+	const float Outer = HoGojoVoidOuterRadius();
+	float BestF = 1.0f;
+	int BestId = -1;
+	vec2 BestCenter = vec2(0, 0);
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(i == IgnoreCid)
+			continue;
+		CPlayer *pPl = pGameServer->m_apPlayers[i];
+		if(!HoGojoVoidActive(pPl))
+			continue;
+		CCharacter *pChr = pPl->GetCharacter();
+		if(!pChr || !pChr->IsAlive())
+			continue;
+
+		const vec2 C = pChr->GetPos();
+		// Use closest distance along the segment to the void center for factor.
+		vec2 Closest;
+		float Dist;
+		if(closest_point_on_line(From, To, C, Closest))
+			Dist = distance(Closest, C);
+		else
+			Dist = std::min(distance(From, C), distance(To, C));
+
+		if(Dist > Outer)
+			continue;
+
+		const float F = VoidApproachFactor(Dist, Radius, Outer);
+		if(F < BestF)
+		{
+			BestF = F;
+			BestId = i;
+			BestCenter = C;
+		}
+	}
+
+	if(BestId < 0)
+		return To;
+
+	if(pFactor)
+		*pFactor = BestF;
+	if(pVoidCid)
+		*pVoidCid = BestId;
+
+	vec2 Delta = To - From;
+	vec2 NewTo = From + Delta * BestF;
+
+	// Never enter the hard shell.
+	const float DNew = distance(NewTo, BestCenter);
+	if(DNew < Radius - 0.5f)
+	{
+		vec2 Out = NewTo - BestCenter;
+		if(length(Out) < 0.001f)
+			Out = From - BestCenter;
+		if(length(Out) < 0.001f)
+			Out = vec2(0.0f, -1.0f);
+		NewTo = BestCenter + normalize(Out) * Radius;
+	}
+
+	// If still aiming into the shell from outside, clamp to surface along the path.
+	vec2 Hit;
+	if(HoGojoVoidClipSegment(pGameServer, From, NewTo, IgnoreCid, &Hit))
+	{
+		// Soft: only snap fully to shell when almost stopped.
+		if(BestF < 0.08f)
+			NewTo = Hit;
+		else if(distance(From, Hit) < distance(From, NewTo))
+			NewTo = From + (Hit - From) * std::max(BestF, 0.05f);
+	}
+
+	return NewTo;
+}
+
 bool HoGojoVoidBlocksExternal(const CCharacter *pVictim, int FromCid)
 {
 	if(!pVictim || !pVictim->IsAlive())
@@ -244,22 +346,7 @@ bool HoGojoTechniqueMode(const CPlayer *pPlayer)
 	return Mode == HO_WPNMODE_SHOTGUN_BLUE || Mode == HO_WPNMODE_SHOTGUN_RED || Mode == HO_WPNMODE_SHOTGUN_PURPLE;
 }
 
-// Stick foreign hooks on the void sphere surface (do not attach to the body).
-static void HoGojoVoidRedirectHook(CCharacter *pHooker, vec2 VoidCenter, float Radius)
-{
-	if(!pHooker)
-		return;
-	vec2 From = pHooker->GetPos();
-	vec2 Diff = From - VoidCenter;
-	if(length(Diff) < 0.001f)
-		Diff = vec2(0.0f, -1.0f);
-	else
-		Diff = normalize(Diff);
-	// Surface point facing the hooker (around the void user, not on their body).
-	const vec2 Surface = VoidCenter + Diff * Radius;
-	pHooker->SetHookGrabWorld(Surface);
-}
-
+// Soft Infinity for hooks: tip slows near void, settles on shell, follows domain.
 static void HoGojoVoidProtectHooks(CCharacter *pVoidChr)
 {
 	if(!pVoidChr || !HoGojoVoidActive(pVoidChr->GetPlayer()))
@@ -269,6 +356,7 @@ static void HoGojoVoidProtectHooks(CCharacter *pVoidChr)
 	const int VoidId = pVoidChr->GetPlayer()->GetCid();
 	const vec2 Center = pVoidChr->GetPos();
 	const float Radius = HoGojoVoidRadius();
+	const float Outer = HoGojoVoidOuterRadius();
 
 	for(int i = 0; i < MAX_CLIENTS; i++)
 	{
@@ -279,34 +367,53 @@ static void HoGojoVoidProtectHooks(CCharacter *pVoidChr)
 			continue;
 
 		const CCharacterCore *pCore = pOther->Core();
-		// Already attached to void user → peel off onto sphere.
+		// Never stay attached to the void user body.
 		if(pCore->HookedPlayer() == VoidId)
 		{
-			HoGojoVoidRedirectHook(pOther, Center, Radius);
+			vec2 Diff = pOther->GetPos() - Center;
+			if(length(Diff) < 0.001f)
+				Diff = vec2(0.0f, -1.0f);
+			pOther->SetHookGrabWorld(Center + normalize(Diff) * Radius);
 			continue;
 		}
 
-		// Flying hook that enters / would enter the sphere.
+		if(pCore->m_HookState != HOOK_FLYING &&
+			!(pCore->m_HookState == HOOK_GRABBED && pCore->HookedPlayer() == -1))
+			continue;
+
+		const vec2 Tip = pCore->m_HookPos;
+		const float Dist = distance(Tip, Center);
+		if(Dist > Outer && pCore->m_HookState == HOOK_FLYING)
+			continue;
+
+		// Soft-move tip from previous owner pos / tip toward current tip.
+		const vec2 From = pCore->m_HookState == HOOK_FLYING ? pOther->GetPos() : Tip;
+		float Factor = 1.0f;
+		vec2 Soft = HoGojoVoidSoftMove(pGameServer, From, Tip, i, &Factor, nullptr);
+
+		// Extra: if tip is near this void's shell, settle onto shell facing the hooker.
+		if(Dist <= Outer)
+		{
+			vec2 Out = Tip - Center;
+			if(length(Out) < 0.001f)
+				Out = pOther->GetPos() - Center;
+			if(length(Out) < 0.001f)
+				Out = vec2(0.0f, -1.0f);
+			const vec2 Surface = Center + normalize(Out) * Radius;
+			if(Factor < 0.12f || Dist <= Radius + 2.0f)
+			{
+				// Crawl onto shell and grab world so it does not fly through.
+				pOther->SetHookGrabWorld(Surface);
+				continue;
+			}
+			// Blend tip toward surface as it slows.
+			Soft = Soft + (Surface - Soft) * (1.0f - Factor) * 0.35f;
+		}
+
 		if(pCore->m_HookState == HOOK_FLYING)
-		{
-			const vec2 HookPos = pCore->m_HookPos;
-			vec2 Closest;
-			if(closest_point_on_line(pOther->GetPos(), HookPos, Center, Closest))
-			{
-				if(distance(Closest, Center) <= Radius)
-					HoGojoVoidRedirectHook(pOther, Center, Radius);
-			}
-			else if(distance(HookPos, Center) <= Radius)
-			{
-				HoGojoVoidRedirectHook(pOther, Center, Radius);
-			}
-		}
-		// Ground-grabbed hook tip pushed into sphere while void user walks into it.
-		else if(pCore->m_HookState == HOOK_GRABBED && pCore->HookedPlayer() == -1)
-		{
-			if(distance(pCore->m_HookPos, Center) < Radius - 2.0f)
-				HoGojoVoidRedirectHook(pOther, Center, Radius);
-		}
+			pOther->SetHookTipPos(Soft);
+		else
+			pOther->SetHookGrabWorld(Soft);
 	}
 }
 

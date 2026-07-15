@@ -75,6 +75,8 @@ public:
 	void ResetHook();
 	// Grab hook tip at a world position without attaching to a player (void sphere barrier).
 	void SetHookGrabWorld(vec2 Pos);
+	// Move flying/grabbed hook tip (Unlimited Void soft approach).
+	void SetHookTipPos(vec2 Pos);
 	void ResetInput();
 	void FireWeapon();
 

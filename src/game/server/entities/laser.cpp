@@ -32,6 +32,7 @@ CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEner
 	m_ZeroEnergyBounceInLastTick = false;
 	m_StuckOnVoid = false;
 	m_VoidHoldLeft = 0;
+	m_VoidTargetCid = -1;
 	m_TuneZone = GameServer()->Collision()->IsTune(GameServer()->Collision()->GetMapIndex(m_Pos));
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 	m_BelongsToPracticeTeam = pOwnerChar && pOwnerChar->Teams()->IsPractice(pOwnerChar->Team());
@@ -124,25 +125,38 @@ void CLaser::DoBounce()
 		m_TelePos = vec2(0, 0);
 	}
 
-	vec2 To = m_Pos + m_Dir * m_Energy;
-
-	// Unlimited Void: shotgun/laser rays stick on the domain shell (stay visible, no bounce).
-	vec2 VoidHit;
-	const bool HitVoid = HoGojoVoidClipSegment(GameServer(), m_Pos, To, m_Owner, &VoidHit);
-	if(HitVoid)
-		To = VoidHit;
+	// Infinity: tip advances slower the closer it is to a void domain.
+	const float WantEnergy = m_Energy;
+	float VoidFactor = 1.0f;
+	int VoidCid = -1;
+	vec2 IdealTo = m_Pos + m_Dir * WantEnergy;
+	vec2 SoftTo = HoGojoVoidSoftMove(GameServer(), m_Pos, IdealTo, m_Owner, &VoidFactor, &VoidCid);
+	// Step length limited by soft factor (crawl near shell).
+	const float MaxStep = WantEnergy * std::max(0.04f, VoidFactor);
+	vec2 To = m_Pos + m_Dir * MaxStep;
+	// Do not overshoot SoftTo.
+	if(distance(m_Pos, SoftTo) < distance(m_Pos, To))
+		To = SoftTo;
 
 	Res = GameServer()->Collision()->IntersectLineTeleWeapon(m_Pos, To, &Coltile, &To, &z);
 
-	if(HitVoid && !Res)
+	if(!Res && VoidFactor < 0.12f && VoidCid >= 0)
 	{
-		// Stick: beam remains From→shell until hold expires (Tick skips further bounce).
+		// Tip settled on shell: track that void for a short time (follows player), then fade.
 		m_From = m_Pos;
-		m_Pos = VoidHit;
+		m_Pos = SoftTo;
 		m_StuckOnVoid = true;
-		m_VoidHoldLeft = std::max(10, g_Config.m_HoGojoVoidHoldTicks);
+		m_VoidTargetCid = VoidCid;
+		m_VoidHoldLeft = std::max(8, g_Config.m_HoGojoVoidHoldTicks / 2);
 		m_Energy = 0;
 		return;
+	}
+
+	// Consume energy proportional to actual advance (slower near void = longer crawl).
+	if(!Res)
+	{
+		const float Advanced = distance(m_Pos, To);
+		m_Energy -= Advanced / std::max(0.08f, VoidFactor);
 	}
 
 	if(Res)
@@ -215,7 +229,9 @@ void CLaser::DoBounce()
 		{
 			m_From = m_Pos;
 			m_Pos = To;
-			m_Energy = -1;
+			// Far from void: one-shot beam ends. Near void: crawl over multiple bounce delays.
+			if(VoidFactor >= 0.98f || m_Energy <= 1.0f)
+				m_Energy = -1;
 		}
 	}
 
@@ -296,11 +312,21 @@ void CLaser::Tick()
 		}
 	}
 
-	// Stay on Unlimited Void shell for a while (hook-like stick).
+	// Tip tracks the void shell while domain exists; no orphan laser mid-air.
 	if(m_StuckOnVoid)
 	{
-		if(--m_VoidHoldLeft <= 0)
+		CCharacter *pVoid = (m_VoidTargetCid >= 0) ? GameServer()->GetPlayerChar(m_VoidTargetCid) : nullptr;
+		if(!pVoid || !pVoid->IsAlive() || !HoGojoVoidActive(pVoid->GetPlayer()) || --m_VoidHoldLeft <= 0)
+		{
 			Reset();
+			return;
+		}
+		// Re-cast ray from m_From along m_Dir; soft-move against current domain.
+		vec2 Ideal = m_From + m_Dir * 10000.0f;
+		float Factor = 1.0f;
+		m_Pos = HoGojoVoidSoftMove(GameServer(), m_From, Ideal, m_Owner, &Factor, nullptr);
+		// Keep beam origin fixed at m_From for a stable look.
+		m_EvalTick = Server()->Tick();
 		return;
 	}
 
