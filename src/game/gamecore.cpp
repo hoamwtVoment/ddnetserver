@@ -171,6 +171,7 @@ void CCharacterCore::Reset()
 	m_LaserHitDisabled = false;
 	m_ShotgunHitDisabled = false;
 	m_HookHitDisabled = false;
+	m_HookProtected = false;
 	m_Super = false;
 	m_Invincible = false;
 	m_HasTelegunGun = false;
@@ -350,7 +351,7 @@ void CCharacterCore::Tick(bool UseInput, bool DoDeferredTick)
 			for(int i = 0; i < MAX_CLIENTS; i++)
 			{
 				CCharacterCore *pCharCore = m_pWorld->m_apCharacters[i];
-				if(!pCharCore || pCharCore == this || (!(m_Super || pCharCore->m_Super) && ((m_Id != -1 && !m_pTeams->CanCollide(i, m_Id)) || pCharCore->m_Solo || m_Solo)))
+				if(!pCharCore || pCharCore == this || pCharCore->m_HookProtected || (!(m_Super || pCharCore->m_Super) && ((m_Id != -1 && !m_pTeams->CanCollide(i, m_Id)) || pCharCore->m_Solo || m_Solo)))
 					continue;
 
 				vec2 ClosestPoint;
@@ -407,7 +408,12 @@ void CCharacterCore::Tick(bool UseInput, bool DoDeferredTick)
 		if(m_HookedPlayer != -1 && m_pWorld)
 		{
 			CCharacterCore *pCharCore = m_pWorld->m_apCharacters[m_HookedPlayer];
-			if(pCharCore && m_Id != -1 && m_pTeams->CanKeepHook(m_Id, pCharCore->m_Id))
+			if(pCharCore && pCharCore->m_HookProtected)
+			{
+				// Target is protected (e.g. 无下限) — never stick to body.
+				SetHookedPlayer(-1);
+			}
+			else if(pCharCore && m_Id != -1 && m_pTeams->CanKeepHook(m_Id, pCharCore->m_Id))
 				m_HookPos = pCharCore->m_Pos;
 			else
 			{
@@ -495,7 +501,7 @@ void CCharacterCore::TickDeferred()
 				}
 
 				// handle hook influence
-				if(!m_HookHitDisabled && m_HookedPlayer == i && m_Tuning.m_PlayerHooking)
+				if(!m_HookHitDisabled && m_HookedPlayer == i && m_Tuning.m_PlayerHooking && !pCharCore->m_HookProtected)
 				{
 					if(Distance > PhysicalSize() * 1.50f)
 					{

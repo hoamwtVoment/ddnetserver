@@ -954,6 +954,9 @@ void CCharacter::PreTick()
 
 	Antibot()->OnCharacterTick(m_pPlayer->GetCid());
 
+	// 无下限: mark core unhookable BEFORE physics so close-range body grab cannot attach/pull.
+	m_Core.m_HookProtected = HoGojoVoidActive(m_pPlayer);
+
 	m_Core.m_Input = m_Input;
 	m_Core.Tick(true, !g_Config.m_SvNoWeakHook);
 	if(m_pPlayer->m_HoFlyMode)

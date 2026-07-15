@@ -263,6 +263,8 @@ public:
 	bool m_LaserHitDisabled;
 	bool m_ShotgunHitDisabled;
 	bool m_HookHitDisabled;
+	// Server-side: cannot be player-hooked (e.g. 无下限). Skipped in attach + hook drag.
+	bool m_HookProtected;
 	bool m_Super;
 	bool m_Invincible;
 	bool m_HasTelegunGun;
