@@ -403,22 +403,21 @@ void CHoGojoFusionOrb::Tick()
 
 void CHoGojoFusionOrb::Snap(int SnappingClient)
 {
-	if(NetworkClipped(SnappingClient) || !GetId().has_value())
+	if(!GetId().has_value())
 		return;
 
-	// Cross of two diameters = readable “ball” (vanilla laser colors differ by type).
+	// Diameter = full 茈 radius so charge orbs match the ball that will launch.
 	const int LaserType = m_Style == STYLE_BLUE ? LASERTYPE_SHOTGUN : LASERTYPE_GUN;
 	const float Ang = (Server()->Tick() % 40) * (2.0f * PI / 40.0f);
-	const float Ang2 = Ang + PI * 0.5f;
 	const vec2 A = m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * m_Radius;
 	const vec2 B = m_Pos - vec2(std::cos(Ang), std::sin(Ang)) * m_Radius;
+	if(NetworkClipped(SnappingClient) && NetworkClipped(SnappingClient, A) && NetworkClipped(SnappingClient, B))
+		return;
+
 	const int Version = GameServer()->GetClientVersion(SnappingClient);
-	// Primary diameter (entity id). Secondary uses a free-ish visual via second segment
-	// along the same id is not possible — snap one diameter + short core segment.
 	GameServer()->SnapLaserObject(
 		CSnapContext(Version, Server()->IsSixup(SnappingClient), SnappingClient),
 		GetId().value(), B, A, StableLaserTick(m_SpawnTick, Server()), m_Owner, LaserType, 0, -1, LASERFLAG_NO_PREDICT);
-	(void)Ang2;
 }
 
 void CHoGojoFusionOrb::SwapClients(int Client1, int Client2)
@@ -750,8 +749,16 @@ static void HoGojoEnsureFusionOrbs(CCharacter *pChr)
 		new CHoGojoFusionOrb(&pGameServer->m_World, pPlayer->GetCid(), CHoGojoFusionOrb::STYLE_RED);
 }
 
-// Frac 0→1 while charging: orbs grow and slide toward center above the head.
-// MergeProgress 0→1 after release: finish slamming together into one.
+// Same radius formula as the 茈 projectile that will launch (must stay in sync).
+static float HoGojoPurpleRadiusFromFrac(float Frac)
+{
+	const float RMin = (float)std::max(16, g_Config.m_HoGojoPurpleRadiusMin);
+	const float RMax = (float)std::max((int)RMin, g_Config.m_HoGojoPurpleRadiusMax);
+	return LerpF(RMin, RMax, std::clamp(Frac, 0.0f, 1.0f));
+}
+
+// Frac 0→1 while charging: orbs grow (to 茈 size) and slide toward center.
+// MergeProgress 0→1 after release: finish slamming together into one ball of that size.
 static void HoGojoUpdateFusionOrbs(CCharacter *pChr, float Frac, float MergeProgress)
 {
 	CPlayer *pPlayer = pChr->GetPlayer();
@@ -759,23 +766,27 @@ static void HoGojoUpdateFusionOrbs(CCharacter *pChr, float Frac, float MergeProg
 		return;
 	HoGojoEnsureFusionOrbs(pChr);
 
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -52.0f);
-	// Charge: start wide, grow, ease inward. Merge: crush remaining gap to center.
-	const float ChargeIn = Frac * 0.55f;
-	const float Spread = 78.0f * (1.0f - ChargeIn) * (1.0f - MergeProgress);
-	const float OrbR = 10.0f + Frac * 22.0f + MergeProgress * 8.0f;
-	const float Lift = -4.0f * (1.0f - Frac);
+	// Orb radius == eventual 茈 radius at this charge (not a tiny decorative ball).
+	const float PurpleR = HoGojoPurpleRadiusFromFrac(Frac);
+	const float OrbR = PurpleR;
 
-	const vec2 BluePos = Head + vec2(-Spread, Lift);
-	const vec2 RedPos = Head + vec2(Spread, Lift);
+	// Head higher so large orbs don't bury the tee.
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -40.0f - OrbR * 0.35f);
+	// Start far enough that two full-size spheres barely touch when nearly merged.
+	const float ChargeIn = Frac * 0.65f;
+	const float Spread0 = OrbR * 1.25f + 36.0f;
+	const float Spread = Spread0 * (1.0f - ChargeIn) * (1.0f - MergeProgress);
+
+	const vec2 BluePos = Head + vec2(-Spread, 0.0f);
+	const vec2 RedPos = Head + vec2(Spread, 0.0f);
 
 	if(pPlayer->m_pHoGojoFusionBlue)
 		pPlayer->m_pHoGojoFusionBlue->SetVisual(BluePos, OrbR);
 	if(pPlayer->m_pHoGojoFusionRed)
 		pPlayer->m_pHoGojoFusionRed->SetVisual(RedPos, OrbR);
 
-	// Soft spark only when nearly merged (not a hammer storm).
-	if(MergeProgress > 0.7f || Frac > 0.9f)
+	// Soft spark only when nearly merged.
+	if(MergeProgress > 0.65f || Frac > 0.92f)
 	{
 		CGameContext *pGameServer = pChr->GameServer();
 		if(pGameServer && pGameServer->Server()->Tick() % 3 == 0)
@@ -819,17 +830,16 @@ static void HoGojoTickPurpleMerge(CCharacter *pChr)
 	if(pChr->m_HoGojoPurpleMergeLeft > 0)
 		return;
 
-	// Orbs met → launch 茈 (modest size scale). Phases walls.
-	const float RMin = (float)std::max(16, g_Config.m_HoGojoPurpleRadiusMin);
-	const float RMax = (float)std::max((int)RMin, g_Config.m_HoGojoPurpleRadiusMax);
-	const float Radius = LerpF(RMin, RMax, pChr->m_HoGojoPurpleChargeFrac);
+	// Orbs met → launch 茈 at the same radius the fusion balls were showing.
+	const float Radius = HoGojoPurpleRadiusFromFrac(pChr->m_HoGojoPurpleChargeFrac);
 	vec2 Dir = pChr->m_HoGojoPurpleDir;
 	if(length(Dir) < 0.001f)
 		Dir = vec2(1, 0);
 	else
 		Dir = normalize(Dir);
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -52.0f);
-	const vec2 Start = pChr->m_Pos + Dir * 28.0f;
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -40.0f - Radius * 0.35f);
+	// Spawn slightly outside body so the ball doesn't clip the tee.
+	const vec2 Start = pChr->m_Pos + Dir * (28.0f + Radius * 0.15f);
 	new CHoGojoProjectile(&pGameServer->m_World, pPlayer->GetCid(), Start, Dir, Radius, CHoGojoProjectile::TYPE_PURPLE);
 	pGameServer->CreateSound(pChr->GetPos(), SOUND_GRENADE_EXPLODE, pChr->TeamMask());
 	pGameServer->CreateDamageInd(Head, 0.0f, 4, pChr->TeamMask());
@@ -870,7 +880,7 @@ static void HoGojoSendChargeIndicator(CCharacter *pChr, int Mode, int ChargeTick
 	else if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
 	{
 		pName = "茈";
-		SizePx = LerpF((float)g_Config.m_HoGojoPurpleRadiusMin, (float)g_Config.m_HoGojoPurpleRadiusMax, Frac);
+		SizePx = HoGojoPurpleRadiusFromFrac(Frac);
 	}
 
 	const float DiamTiles = (SizePx * 2.0f) / 32.0f;
