@@ -174,8 +174,8 @@ float HoGojoVoidRadius()
 
 float HoGojoVoidOuterRadius()
 {
-	// Soft influence zone (Infinity): farther out, still slows objects.
-	return HoGojoVoidRadius() * 2.25f;
+	// Soft influence only slightly outside the shell (not a huge field).
+	return HoGojoVoidRadius() * 1.2f;
 }
 
 bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int ShooterCid, vec2 *pHit)
@@ -873,15 +873,15 @@ static void HoGojoUpdateFusionOrbs(CCharacter *pChr, float Frac, float MergeProg
 		return;
 	HoGojoEnsureFusionOrbs(pChr);
 
-	// Orb radius == eventual 茈 radius at this charge (not a tiny decorative ball).
+	// Each 苍/赫 ball is ~half the 茈 radius so the pair feels like the final ball size.
 	const float PurpleR = HoGojoPurpleRadiusFromFrac(Frac);
-	const float OrbR = PurpleR;
+	const float OrbR = PurpleR * 0.5f;
 
-	// Head higher so large orbs don't bury the tee.
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -40.0f - OrbR * 0.35f);
-	// Start far enough that two full-size spheres barely touch when nearly merged.
+	// Head higher so orbs don't bury the tee.
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -40.0f - OrbR * 0.4f);
+	// Spacing: start apart, close as charge/merge; final size reads as one 茈.
 	const float ChargeIn = Frac * 0.65f;
-	const float Spread0 = OrbR * 1.25f + 36.0f;
+	const float Spread0 = OrbR * 1.15f + 28.0f;
 	const float Spread = Spread0 * (1.0f - ChargeIn) * (1.0f - MergeProgress);
 
 	const vec2 BluePos = Head + vec2(-Spread, 0.0f);
