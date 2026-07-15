@@ -1,5 +1,6 @@
 #include "gojo.h"
 
+#include "deathmsg.h"
 #include "hp.h"
 #include "weaponselect.h"
 
@@ -84,13 +85,26 @@ namespace
 			Diff = vec2(0.0f, -1.0f);
 		else
 			Diff = normalize(Diff);
-		const vec2 Force = Attract ? (-Diff * Strength) : (Diff * Strength);
-		pTarget->AddVelocity(Force);
+		if(Attract)
+		{
+			pTarget->AddVelocity(-Diff * Strength);
+			return;
+		}
+
+		// 赫: hard knockback that can shove grounded tees (pop slightly up to break friction).
+		vec2 Kick = Diff * Strength;
+		if(pTarget->IsGrounded())
+		{
+			Kick.x *= 1.55f;
+			if(Kick.y > -4.0f)
+				Kick.y = -4.0f - Strength * 0.08f;
+		}
+		pTarget->AddVelocity(Kick);
 	}
 
-	void DamageInRadius(CCharacter *pOwner, vec2 Center, float Radius, int Damage, float ForceStr, bool Attract, int Weapon)
+	void DamageInRadius(CCharacter *pOwner, vec2 Center, float Radius, int Damage, float ForceStr, bool Attract, int Weapon, int DeathCause)
 	{
-		if(!pOwner || Damage < 0)
+		if(!pOwner)
 			return;
 		CGameContext *pGameServer = pOwner->GameServer();
 		CEntity *apEnts[MAX_CLIENTS];
@@ -104,10 +118,42 @@ namespace
 				PullOrPush(pChr, Center, ForceStr, Attract);
 			if(Damage > 0)
 			{
-				pChr->TakeDamage(vec2(0, 0), Damage, pOwner->GetPlayer()->GetCid(), Weapon);
-				HoHpTakeDamage(pChr, Damage, pOwner->GetPlayer()->GetCid(), Weapon);
+				const int Killer = pOwner->GetPlayer()->GetCid();
+				pChr->TakeDamage(vec2(0, 0), 0, Killer, Weapon);
+				HoHpTakeDamage(pChr, Damage, Killer, Weapon, true, DeathCause);
 			}
 		}
+	}
+
+	// First intersection of segment From->To with sphere (C,R). Returns t in [0,1] or -1.
+	float SegmentSphereT(vec2 From, vec2 To, vec2 C, float R)
+	{
+		const vec2 D = To - From;
+		const float A = dot(D, D);
+		if(A < 0.0001f)
+			return distance(From, C) <= R ? 0.0f : -1.0f;
+		const vec2 F = From - C;
+		const float B = 2.0f * dot(F, D);
+		const float Cc = dot(F, F) - R * R;
+		const float Disc = B * B - 4.0f * A * Cc;
+		if(Disc < 0.0f)
+			return -1.0f;
+		const float S = std::sqrt(Disc);
+		const float T0 = (-B - S) / (2.0f * A);
+		const float T1 = (-B + S) / (2.0f * A);
+		// Prefer entry point when coming from outside.
+		if(T0 >= 0.0f && T0 <= 1.0f)
+			return T0;
+		if(distance(From, C) <= R)
+		{
+			// Already inside: stop at surface along travel (exit) so tip sits on the sphere.
+			if(T1 >= 0.0f && T1 <= 1.0f)
+				return T1;
+			return 0.0f;
+		}
+		if(T1 >= 0.0f && T1 <= 1.0f)
+			return T1;
+		return -1.0f;
 	}
 }
 
@@ -124,6 +170,48 @@ bool HoGojoVoidActive(const CPlayer *pPlayer)
 float HoGojoVoidRadius()
 {
 	return (float)std::max(32, g_Config.m_HoGojoVoidRadius);
+}
+
+bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int ShooterCid, vec2 *pHit)
+{
+	if(!pGameServer)
+		return false;
+
+	const float Radius = HoGojoVoidRadius();
+	float BestT = 2.0f;
+	vec2 BestPos = To;
+	bool Any = false;
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(i == ShooterCid)
+			continue; // own weapons pass through own void
+		CPlayer *pPl = pGameServer->m_apPlayers[i];
+		if(!HoGojoVoidActive(pPl))
+			continue;
+		CCharacter *pChr = pPl->GetCharacter();
+		if(!pChr || !pChr->IsAlive())
+			continue;
+
+		const float T = SegmentSphereT(From, To, pChr->GetPos(), Radius);
+		if(T < 0.0f || T > 1.0f)
+			continue;
+		if(T < BestT)
+		{
+			BestT = T;
+			BestPos = From + (To - From) * T;
+			vec2 Out = BestPos - pChr->GetPos();
+			if(length(Out) > 0.001f)
+				BestPos = pChr->GetPos() + normalize(Out) * Radius;
+			else
+				BestPos = pChr->GetPos() + vec2(0.0f, -Radius);
+			Any = true;
+		}
+	}
+
+	if(Any && pHit)
+		*pHit = BestPos;
+	return Any;
 }
 
 bool HoGojoVoidBlocksExternal(const CCharacter *pVictim, int FromCid)
@@ -267,7 +355,9 @@ CHoGojoBlue::CHoGojoBlue(CGameWorld *pGameWorld, int Owner, vec2 Pos, float Radi
 	m_Radius(Radius),
 	m_Life(std::max(10, g_Config.m_HoGojoBlueLife)),
 	m_LastDamageTick(0),
-	m_SpawnTick(0)
+	m_SpawnTick(0),
+	m_Controlled(true),
+	m_Vel(0.0f, 0.0f)
 {
 	m_SpawnTick = Server()->Tick();
 	GameWorld()->InsertEntity(this);
@@ -291,6 +381,12 @@ void CHoGojoBlue::Reset()
 	m_MarkedForDestroy = true;
 }
 
+void CHoGojoBlue::ReleaseControl()
+{
+	m_Controlled = false;
+	// Keep m_Vel from last follow step; free-flight continues that velocity.
+}
+
 void CHoGojoBlue::Tick()
 {
 	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
@@ -300,27 +396,44 @@ void CHoGojoBlue::Tick()
 		return;
 	}
 
-	// Control: move toward owner's cursor world position.
-	const vec2 Target = pOwner->GetPlayer()->m_CameraInfo.ConvertTargetToWorld(
-		pOwner->GetPos(), vec2(pOwner->Core()->m_Input.m_TargetX, pOwner->Core()->m_Input.m_TargetY));
-
-	const float Ctrl = std::max(1.0f, (float)g_Config.m_HoGojoBlueControlSpeed);
-	vec2 Diff = Target - m_Pos;
-	const float Dist = length(Diff);
-	if(Dist > 1.0f)
+	if(m_Controlled)
 	{
-		const float Step = std::min(Dist, Ctrl);
-		const vec2 Next = m_Pos + normalize(Diff) * Step;
-		// Soft wall stop (do not enter solid).
-		if(!Collision()->TestBox(Next, vec2(14.0f, 14.0f)))
+		// Control: move toward owner's cursor world position; track velocity for release.
+		const vec2 Target = pOwner->GetPlayer()->m_CameraInfo.ConvertTargetToWorld(
+			pOwner->GetPos(), vec2(pOwner->Core()->m_Input.m_TargetX, pOwner->Core()->m_Input.m_TargetY));
+
+		const float Ctrl = std::max(1.0f, (float)g_Config.m_HoGojoBlueControlSpeed);
+		const vec2 Prev = m_Pos;
+		vec2 Diff = Target - m_Pos;
+		const float Dist = length(Diff);
+		if(Dist > 1.0f)
+		{
+			const float Step = std::min(Dist, Ctrl);
+			const vec2 Next = m_Pos + normalize(Diff) * Step;
+			if(!Collision()->TestBox(Next, vec2(14.0f, 14.0f)))
+				m_Pos = Next;
+			else if(!Collision()->TestBox(vec2(Next.x, m_Pos.y), vec2(14.0f, 14.0f)))
+				m_Pos.x = Next.x;
+			else if(!Collision()->TestBox(vec2(m_Pos.x, Next.y), vec2(14.0f, 14.0f)))
+				m_Pos.y = Next.y;
+		}
+		m_Vel = m_Pos - Prev;
+	}
+	else
+	{
+		// Free flight at release velocity.
+		const vec2 Next = m_Pos + m_Vel;
+		vec2 ColPos;
+		if(Collision()->IntersectLine(m_Pos, Next, &ColPos, nullptr))
+		{
+			m_Pos = ColPos;
+			m_Vel *= 0.35f;
+		}
+		else
 			m_Pos = Next;
-		else if(!Collision()->TestBox(vec2(Next.x, m_Pos.y), vec2(14.0f, 14.0f)))
-			m_Pos.x = Next.x;
-		else if(!Collision()->TestBox(vec2(m_Pos.x, Next.y), vec2(14.0f, 14.0f)))
-			m_Pos.y = Next.y;
 	}
 
-	// Attraction each tick.
+	// Attraction each tick (stronger pull).
 	const float Pull = std::max(0.0f, g_Config.m_HoGojoBluePull / 10.0f);
 	CEntity *apEnts[MAX_CLIENTS];
 	const int Num = GameServer()->m_World.FindEntities(m_Pos, m_Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
@@ -331,7 +444,11 @@ void CHoGojoBlue::Tick()
 			continue;
 		const float DistT = length(pChr->m_Pos - m_Pos);
 		const float Falloff = 1.0f - std::clamp(DistT / m_Radius, 0.0f, 1.0f);
-		PullOrPush(pChr, m_Pos, Pull * (0.35f + 0.65f * Falloff), true);
+		// Stronger near-center + base pull so grounded tees get dragged.
+		const float Str = Pull * (0.55f + 1.15f * Falloff);
+		PullOrPush(pChr, m_Pos, Str, true);
+		if(pChr->IsGrounded())
+			pChr->AddVelocity(vec2(0.0f, -1.2f * Falloff));
 	}
 
 	const int DmgDelay = std::max(1, g_Config.m_HoGojoBlueDamageDelay);
@@ -340,10 +457,10 @@ void CHoGojoBlue::Tick()
 		m_LastDamageTick = Server()->Tick();
 		const int Dmg = std::max(0, g_Config.m_HoGojoBlueDamage);
 		if(Dmg > 0)
-			DamageInRadius(pOwner, m_Pos, m_Radius, Dmg, 0.0f, true, WEAPON_SHOTGUN);
+			DamageInRadius(pOwner, m_Pos, m_Radius, Dmg, 0.0f, true, WEAPON_SHOTGUN, HO_DEATH_GOJO_BLUE);
 	}
 
-	if(Server()->Tick() % 4 == 0)
+	if(Server()->Tick() % 5 == 0)
 		GameServer()->CreateDamageInd(m_Pos, Server()->Tick() * 0.3f, 1, pOwner->TeamMask());
 }
 
@@ -391,12 +508,16 @@ void CHoGojoProjectile::ApplyAoE(bool FinalBurst)
 	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
 	if(!pOwner)
 		return;
+	const int DeathCause = m_Type == TYPE_PURPLE ? HO_DEATH_GOJO_PURPLE : HO_DEATH_GOJO_RED;
 	const int Dmg = m_Type == TYPE_PURPLE ? std::max(0, g_Config.m_HoGojoPurpleDamage) : std::max(0, g_Config.m_HoGojoRedDamage);
-	const float Push = m_Type == TYPE_PURPLE ? (float)g_Config.m_HoGojoPurplePush / 10.0f : (float)g_Config.m_HoGojoRedPush / 10.0f;
-	const float Mult = FinalBurst ? 1.5f : 1.0f;
-	// Red/Purple repel.
-	DamageInRadius(pOwner, m_Pos, m_Radius, FinalBurst ? Dmg : std::max(0, Dmg / 3), Push * Mult, false, WEAPON_SHOTGUN);
-	if(FinalBurst || Server()->Tick() % 3 == 0)
+	// Push in tenths → strong impulse (red must shove grounded players).
+	float Push = m_Type == TYPE_PURPLE ? (float)g_Config.m_HoGojoPurplePush / 10.0f : (float)g_Config.m_HoGojoRedPush / 10.0f;
+	if(m_Type == TYPE_RED)
+		Push *= FinalBurst ? 2.4f : 1.1f;
+	else
+		Push *= FinalBurst ? 1.8f : 0.9f;
+	DamageInRadius(pOwner, m_Pos, m_Radius, FinalBurst ? Dmg : std::max(0, Dmg / 3), Push, false, WEAPON_SHOTGUN, DeathCause);
+	if(FinalBurst || Server()->Tick() % 4 == 0)
 		GameServer()->CreateExplosion(m_Pos, m_Owner, WEAPON_SHOTGUN, true, -1, pOwner->TeamMask());
 }
 
@@ -503,6 +624,7 @@ static void HoGojoTickVoidDomain(CCharacter *pOwner)
 	// Hooks stop on the sphere around the user (not on the body).
 	HoGojoVoidProtectHooks(pOwner);
 
+	// Information overload: quiet velocity damp only (no hammer SFX spam).
 	CEntity *apEnts[MAX_CLIENTS];
 	const int Num = pGameServer->m_World.FindEntities(pOwner->m_Pos, Radius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
 	for(int i = 0; i < Num; i++)
@@ -510,18 +632,7 @@ static void HoGojoTickVoidDomain(CCharacter *pOwner)
 		auto *pChr = static_cast<CCharacter *>(apEnts[i]);
 		if(!CanHit(pOwner, pChr))
 			continue;
-		// Information overload: crush velocity toward zero.
 		pChr->SetVelocity(pChr->Core()->m_Vel * Damp);
-		if(pGameServer->Server()->Tick() % 8 == 0)
-			pGameServer->CreateDamageInd(pChr->m_Pos, 0, 1, pOwner->TeamMask());
-	}
-
-	// Domain ring visual.
-	if(pGameServer->Server()->Tick() % 2 == 0)
-	{
-		const float Ang = (pGameServer->Server()->Tick() % 60) * (2.0f * PI / 60.0f);
-		const vec2 Edge = pOwner->m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * Radius;
-		pGameServer->CreateHammerHit(Edge, pOwner->TeamMask());
 	}
 }
 
@@ -645,15 +756,31 @@ void HoGojoTickCharacter(CCharacter *pChr)
 
 	const CCharacterCore *pCore = pChr->Core();
 	const bool Fire = (pCore->m_Input.m_Fire & 1) != 0;
+	const bool FirePress = Fire && !pChr->m_HoGojoFireHeld;
 	const int Mode = HoGojoShotgunMode(pPlayer);
 	const int MinT = std::max(1, g_Config.m_HoGojoChargeTicksMin);
 	const int MaxT = std::max(MinT, g_Config.m_HoGojoChargeTicksMax);
+
+	// 苍: while controlled, another click detaches (keeps last follow velocity).
+	if(Mode == HO_WPNMODE_SHOTGUN_BLUE && pPlayer->m_pHoGojoBlue && pPlayer->m_pHoGojoBlue->IsControlled())
+	{
+		if(FirePress)
+		{
+			pPlayer->m_pHoGojoBlue->ReleaseControl();
+			pChr->m_HoGojoFireHeld = true;
+			pChr->m_HoGojoChargeTicks = 0;
+			return;
+		}
+		// Holding while still controlled: do not charge a second blue.
+		pChr->m_HoGojoFireHeld = Fire;
+		pChr->m_HoGojoChargeTicks = 0;
+		return;
+	}
 
 	if(Fire)
 	{
 		if(pChr->m_HoGojoChargeTicks < MaxT)
 			pChr->m_HoGojoChargeTicks++;
-		// Charge VFX density scales with charge.
 		if(pChr->m_HoGojoChargeTicks > 0 && pChr->GameServer()->Server()->Tick() % 3 == 0)
 		{
 			const float Frac = ClampChargeFrac(pChr->m_HoGojoChargeTicks);
@@ -666,7 +793,6 @@ void HoGojoTickCharacter(CCharacter *pChr)
 	}
 	else if(pChr->m_HoGojoFireHeld)
 	{
-		// Release: cast if past minimum.
 		if(pChr->m_HoGojoChargeTicks >= MinT)
 		{
 			const vec2 Mouse((float)pCore->m_Input.m_TargetX, (float)pCore->m_Input.m_TargetY);
@@ -675,6 +801,7 @@ void HoGojoTickCharacter(CCharacter *pChr)
 				Dir = normalize(Dir);
 			else
 				Dir = vec2(1, 0);
+			// New 苍 replaces free-flying previous one.
 			HoGojoCast(pChr, Mode, pChr->m_HoGojoChargeTicks, Dir);
 		}
 		pChr->m_HoGojoChargeTicks = 0;

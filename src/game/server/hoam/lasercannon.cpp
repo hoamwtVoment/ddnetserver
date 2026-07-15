@@ -1,5 +1,6 @@
 #include "lasercannon.h"
 
+#include "gojo.h"
 #include "hp.h"
 #include "weaponselect.h"
 
@@ -185,6 +186,14 @@ void CHoLaserCannonBeam::UpdateBeam()
 
 	// Wall stop — no bounce / reflection.
 	GameServer()->Collision()->IntersectLine(Start, End, nullptr, &End);
+
+	// Unlimited Void shell stops the beam like a wall (not on the body).
+	vec2 VoidHit;
+	if(HoGojoVoidClipSegment(GameServer(), Start, End, m_Owner, &VoidHit))
+	{
+		if(distance(Start, VoidHit) < distance(Start, End))
+			End = VoidHit;
+	}
 
 	// First character along beam (blocker or locked target).
 	vec2 HitAt;

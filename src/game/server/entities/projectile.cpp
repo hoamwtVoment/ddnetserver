@@ -11,6 +11,7 @@
 #include <game/mapitems.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gamemodes/ddnet.h>
+#include <game/server/hoam/gojo.h>
 
 CProjectile::CProjectile(
 	CGameWorld *pGameWorld,
@@ -98,9 +99,25 @@ void CProjectile::Tick()
 	if(m_Owner >= 0)
 		pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 
+	// Unlimited Void: gun/grenade (and any projectile) stop on domain shell, not on the body.
+	bool StoppedOnVoid = false;
+	vec2 VoidHit;
+	if(HoGojoVoidClipSegment(GameServer(), PrevPos, CurPos, m_Owner, &VoidHit))
+	{
+		const float DistWall = Collide ? distance(PrevPos, ColPos) : 1e9f;
+		const float DistVoid = distance(PrevPos, VoidHit);
+		if(DistVoid <= DistWall)
+		{
+			ColPos = VoidHit;
+			Collide = 1;
+			StoppedOnVoid = true;
+		}
+	}
+
 	CCharacter *pTargetChr = nullptr;
 
-	if(pOwnerChar ? !pOwnerChar->GrenadeHitDisabled() : g_Config.m_SvHit)
+	// Skip character hit when the shot dies on a void shell first.
+	if(!StoppedOnVoid && (pOwnerChar ? !pOwnerChar->GrenadeHitDisabled() : g_Config.m_SvHit))
 		pTargetChr = GameServer()->m_World.IntersectCharacter(PrevPos, ColPos, m_Freeze ? 1.0f : 6.0f, ColPos, pOwnerChar, m_Owner);
 
 	if(m_LifeSpan > -1)

@@ -18,6 +18,10 @@ enum
 	HO_DEATH_SPIKE,
 	// Minecraft mace smash kill
 	HO_DEATH_MACE,
+	// Gojo techniques
+	HO_DEATH_GOJO_BLUE,
+	HO_DEATH_GOJO_RED,
+	HO_DEATH_GOJO_PURPLE,
 };
 
 // Call from Die() when a kill message is sent / player actually dies.

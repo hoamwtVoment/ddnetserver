@@ -12,6 +12,7 @@
 #include <game/mapitems.h>
 #include <game/server/gamecontext.h>
 #include <game/server/gamemodes/ddnet.h>
+#include <game/server/hoam/gojo.h>
 #include <game/server/player.h>
 
 CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Type) :
@@ -123,7 +124,22 @@ void CLaser::DoBounce()
 
 	vec2 To = m_Pos + m_Dir * m_Energy;
 
+	// Unlimited Void: shotgun/laser rays stop on the domain shell (like hooks), not on the body.
+	vec2 VoidHit;
+	const bool HitVoid = HoGojoVoidClipSegment(GameServer(), m_Pos, To, m_Owner, &VoidHit);
+	if(HitVoid)
+		To = VoidHit;
+
 	Res = GameServer()->Collision()->IntersectLineTeleWeapon(m_Pos, To, &Coltile, &To, &z);
+
+	if(HitVoid && !Res)
+	{
+		// Stop on void sphere — no bounce, no character hit.
+		m_From = m_Pos;
+		m_Pos = VoidHit;
+		m_Energy = -1;
+		return;
+	}
 
 	if(Res)
 	{

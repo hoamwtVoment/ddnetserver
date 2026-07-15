@@ -4,6 +4,7 @@
 #include <game/server/entity.h>
 
 class CCharacter;
+class CGameContext;
 class CPlayer;
 class CTuningParams;
 
@@ -24,12 +25,18 @@ public:
 	void SwapClients(int Client1, int Client2) override;
 	int GetOwnerId() const override { return m_Owner; }
 
+	bool IsControlled() const { return m_Controlled; }
+	// Detach from cursor; keep flying with last follow velocity.
+	void ReleaseControl();
+
 private:
 	int m_Owner;
 	float m_Radius;
 	int m_Life;
 	int m_LastDamageTick;
 	int m_SpawnTick;
+	bool m_Controlled;
+	vec2 m_Vel;
 };
 
 class CHoGojoProjectile final : public CEntity
@@ -70,6 +77,11 @@ bool HoGojoVoidBlocksExternal(const CCharacter *pVictim, int FromCid);
 bool HoGojoTechniqueMode(const CPlayer *pPlayer);
 int HoGojoShotgunMode(const CPlayer *pPlayer);
 float HoGojoVoidRadius();
+
+// Clip a shot segment against foreign Unlimited Void spheres (own void ignored).
+// Returns true if clipped; *pHit is the stop point on the sphere surface.
+// Covers gun/grenade projectiles and shotgun/laser rays.
+bool HoGojoVoidClipSegment(CGameContext *pGameServer, vec2 From, vec2 To, int ShooterCid, vec2 *pHit);
 
 // Per-character: charge, purple merge, movement slow, void domain + barrier.
 void HoGojoTickCharacter(CCharacter *pChr);

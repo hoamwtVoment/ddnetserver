@@ -99,9 +99,34 @@ static void HoDeathMsgFormat(int Lang, int DeathCause, int Weapon, bool Self, co
 				str_format(pBuf, BufSize, "%s was smashed by %s with a mace", pVictim, pWho);
 		}
 		else if(Lang == HO_LANG_ZH)
-			str_format(pBuf, BufSize, "%s 被一锤毙命", pVictim);
+			str_format(pBuf, BufSize, "%s 被钉头锤砸死了", pVictim);
 		else
 			str_format(pBuf, BufSize, "%s was smashed by a mace", pVictim);
+		return;
+	}
+
+	if(DeathCause == HO_DEATH_GOJO_BLUE)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 被 %s 的苍吸入了", pVictim, pKiller ? pKiller : "?");
+		else
+			str_format(pBuf, BufSize, "%s was pulled in by %s's Blue", pVictim, pKiller ? pKiller : "?");
+		return;
+	}
+	if(DeathCause == HO_DEATH_GOJO_RED)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 被 %s 的赫弹飞了", pVictim, pKiller ? pKiller : "?");
+		else
+			str_format(pBuf, BufSize, "%s was blasted by %s's Red", pVictim, pKiller ? pKiller : "?");
+		return;
+	}
+	if(DeathCause == HO_DEATH_GOJO_PURPLE)
+	{
+		if(Lang == HO_LANG_ZH)
+			str_format(pBuf, BufSize, "%s 被 %s 的茈抹消了", pVictim, pKiller ? pKiller : "?");
+		else
+			str_format(pBuf, BufSize, "%s was erased by %s's Purple", pVictim, pKiller ? pKiller : "?");
 		return;
 	}
 
