@@ -336,14 +336,14 @@ MACRO_CONFIG_INT(HoGojoRedSpeed, ho_gojo_red_speed, 14, 1, 100, CFGFLAG_SERVER, 
 MACRO_CONFIG_INT(HoGojoRedLife, ho_gojo_red_life, 80, 10, 1000, CFGFLAG_SERVER, "赫 lifetime ticks")
 MACRO_CONFIG_INT(HoGojoRedPush, ho_gojo_red_push, 95, 0, 500, CFGFLAG_SERVER, "赫 push strength (tenths); strong enough to shove grounded tees")
 MACRO_CONFIG_INT(HoGojoRedDamage, ho_gojo_red_damage, 8, 0, 10000, CFGFLAG_SERVER, "赫 independent-HP damage")
-// 茈 radius (px): ~32px/tile. Min ~数米直径, Max ~百米级直径 (200% 虚式).
-MACRO_CONFIG_INT(HoGojoPurpleRadiusMin, ho_gojo_purple_radius_min, 96, 16, 4000, CFGFLAG_SERVER, "茈 radius at min charge (px); ~3 tiles radius / ~6m diameter")
-MACRO_CONFIG_INT(HoGojoPurpleRadiusMax, ho_gojo_purple_radius_max, 1600, 32, 8000, CFGFLAG_SERVER, "茈 radius at full charge (px); ~50 tiles / ~100m diameter")
+// 茈 radius (px): modest step up from original ~100 fixed (not km-scale).
+MACRO_CONFIG_INT(HoGojoPurpleRadiusMin, ho_gojo_purple_radius_min, 100, 16, 800, CFGFLAG_SERVER, "茈 radius at min charge (px)")
+MACRO_CONFIG_INT(HoGojoPurpleRadiusMax, ho_gojo_purple_radius_max, 180, 32, 800, CFGFLAG_SERVER, "茈 radius at full charge (px); slightly larger than min")
 MACRO_CONFIG_INT(HoGojoPurpleSpeed, ho_gojo_purple_speed, 22, 1, 100, CFGFLAG_SERVER, "茈 projectile speed (px/tick); phases through walls")
 MACRO_CONFIG_INT(HoGojoPurpleLife, ho_gojo_purple_life, 90, 10, 1000, CFGFLAG_SERVER, "茈 lifetime ticks")
 MACRO_CONFIG_INT(HoGojoPurplePush, ho_gojo_purple_push, 36, 0, 400, CFGFLAG_SERVER, "茈 push strength (tenths)")
 MACRO_CONFIG_INT(HoGojoPurpleDamage, ho_gojo_purple_damage, 30, 0, 10000, CFGFLAG_SERVER, "茈 independent-HP damage")
-MACRO_CONFIG_INT(HoGojoPurpleMergeTicks, ho_gojo_purple_merge_ticks, 8, 2, 60, CFGFLAG_SERVER, "茈 final snap-together ticks after release (grow happens while charging)")
+MACRO_CONFIG_INT(HoGojoPurpleMergeTicks, ho_gojo_purple_merge_ticks, 18, 4, 60, CFGFLAG_SERVER, "茈 final snap-together ticks after release")
 MACRO_CONFIG_INT(HoGojoVoidHoldTicks, ho_gojo_void_hold_ticks, 75, 10, 500, CFGFLAG_SERVER, "How long gun/grenade/laser stay stuck on void shell (ticks)")
 MACRO_CONFIG_INT(HoGojoVoidRadius, ho_gojo_void_radius, 96, 32, 800, CFGFLAG_SERVER, "无下限 domain radius (px); hooks/projectiles stop at edge")
 MACRO_CONFIG_INT(HoGojoVoidDamp, ho_gojo_void_damp, 35, 10, 100, CFGFLAG_SERVER, "无下限 velocity remain percent for others inside domain")

@@ -137,6 +137,9 @@ public:
 	bool m_HoGojoUnlimitedVoid;
 	// Active controlled 苍 (blue) entity
 	class CHoGojoBlue *m_pHoGojoBlue;
+	// 茈 charge fusion visuals (苍 left / 赫 right)
+	class CHoGojoFusionOrb *m_pHoGojoFusionBlue;
+	class CHoGojoFusionOrb *m_pHoGojoFusionRed;
 	// Per-weapon mode (0 = vanilla). Selected via F3 weapon select menu. Indices: hammer..ninja
 	static const int HO_WEAPON_MODE_SLOTS = 6;
 	int m_aHoWeaponMode[HO_WEAPON_MODE_SLOTS];

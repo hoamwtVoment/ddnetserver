@@ -107,6 +107,8 @@ void CPlayer::Reset()
 	m_HoGojo = false;
 	m_HoGojoUnlimitedVoid = false;
 	m_pHoGojoBlue = nullptr;
+	m_pHoGojoFusionBlue = nullptr;
+	m_pHoGojoFusionRed = nullptr;
 	for(int i = 0; i < HO_WEAPON_MODE_SLOTS; i++)
 		m_aHoWeaponMode[i] = 0;
 	m_HoWeaponSelectOpen = false;

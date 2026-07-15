@@ -67,6 +67,34 @@ private:
 	int m_SpawnTick;
 };
 
+// Visual-only orb for 茈 charge fusion (苍 left / 赫 right → merge).
+class CHoGojoFusionOrb final : public CEntity
+{
+public:
+	enum
+	{
+		STYLE_BLUE = 0,
+		STYLE_RED = 1,
+	};
+
+	CHoGojoFusionOrb(CGameWorld *pGameWorld, int Owner, int Style);
+
+	void Reset() override;
+	void Tick() override;
+	void Snap(int SnappingClient) override;
+	void SwapClients(int Client1, int Client2) override;
+	int GetOwnerId() const override { return m_Owner; }
+
+	void SetVisual(vec2 Pos, float Radius);
+	int Style() const { return m_Style; }
+
+private:
+	int m_Owner;
+	int m_Style;
+	float m_Radius;
+	int m_SpawnTick;
+};
+
 // True if player owns Gojo kit (rcon ho_gojo).
 bool HoGojoOwned(const CPlayer *pPlayer);
 // True if Unlimited Void domain is expanded.
@@ -91,6 +119,8 @@ void HoGojoApplyChargeTuning(CCharacter *pChr, CTuningParams *pTuning);
 void HoGojoToggleUnlimitedVoid(CGameContext *pGameServer, CPlayer *pPlayer);
 // Destroy active blue if any.
 void HoGojoClearBlue(CPlayer *pPlayer);
+// Destroy 茈 charge fusion orbs.
+void HoGojoClearFusionOrbs(CPlayer *pPlayer);
 // Death / remove ownership cleanup.
 void HoGojoOnDeath(CPlayer *pPlayer);
 

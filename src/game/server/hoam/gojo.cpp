@@ -318,14 +318,112 @@ void HoGojoClearBlue(CPlayer *pPlayer)
 	pPlayer->m_pHoGojoBlue = nullptr;
 }
 
+void HoGojoClearFusionOrbs(CPlayer *pPlayer)
+{
+	if(!pPlayer)
+		return;
+	if(pPlayer->m_pHoGojoFusionBlue)
+	{
+		pPlayer->m_pHoGojoFusionBlue->Reset();
+		pPlayer->m_pHoGojoFusionBlue = nullptr;
+	}
+	if(pPlayer->m_pHoGojoFusionRed)
+	{
+		pPlayer->m_pHoGojoFusionRed->Reset();
+		pPlayer->m_pHoGojoFusionRed = nullptr;
+	}
+}
+
 void HoGojoOnDeath(CPlayer *pPlayer)
 {
 	if(!pPlayer)
 		return;
 	HoGojoClearBlue(pPlayer);
+	HoGojoClearFusionOrbs(pPlayer);
 	pPlayer->m_HoGojo = false;
 	pPlayer->m_HoGojoUnlimitedVoid = false;
 	pPlayer->m_aHoWeaponMode[WEAPON_SHOTGUN] = HO_WPNMODE_VANILLA;
+}
+
+// --- 茈 charge fusion orbs (visual) ---
+
+CHoGojoFusionOrb::CHoGojoFusionOrb(CGameWorld *pGameWorld, int Owner, int Style) :
+	CEntity(pGameWorld, CGameWorld::ENTTYPE_LASER, true, vec2(0, 0), 8),
+	m_Owner(Owner),
+	m_Style(Style),
+	m_Radius(8.0f),
+	m_SpawnTick(0)
+{
+	m_SpawnTick = Server()->Tick();
+	GameWorld()->InsertEntity(this);
+	if(Owner >= 0 && Owner < MAX_CLIENTS && GameServer()->m_apPlayers[Owner])
+	{
+		CPlayer *pPl = GameServer()->m_apPlayers[Owner];
+		if(Style == STYLE_BLUE)
+		{
+			if(pPl->m_pHoGojoFusionBlue)
+				pPl->m_pHoGojoFusionBlue->Reset();
+			pPl->m_pHoGojoFusionBlue = this;
+		}
+		else
+		{
+			if(pPl->m_pHoGojoFusionRed)
+				pPl->m_pHoGojoFusionRed->Reset();
+			pPl->m_pHoGojoFusionRed = this;
+		}
+	}
+}
+
+void CHoGojoFusionOrb::Reset()
+{
+	if(m_Owner >= 0 && m_Owner < MAX_CLIENTS && GameServer()->m_apPlayers[m_Owner])
+	{
+		CPlayer *pPl = GameServer()->m_apPlayers[m_Owner];
+		if(m_Style == STYLE_BLUE && pPl->m_pHoGojoFusionBlue == this)
+			pPl->m_pHoGojoFusionBlue = nullptr;
+		if(m_Style == STYLE_RED && pPl->m_pHoGojoFusionRed == this)
+			pPl->m_pHoGojoFusionRed = nullptr;
+	}
+	m_MarkedForDestroy = true;
+}
+
+void CHoGojoFusionOrb::SetVisual(vec2 Pos, float Radius)
+{
+	m_Pos = Pos;
+	m_Radius = std::max(4.0f, Radius);
+}
+
+void CHoGojoFusionOrb::Tick()
+{
+	// Owner-driven; if owner gone, drop.
+	CCharacter *pOwner = GameServer()->GetPlayerChar(m_Owner);
+	if(!pOwner || !pOwner->IsAlive())
+		Reset();
+}
+
+void CHoGojoFusionOrb::Snap(int SnappingClient)
+{
+	if(NetworkClipped(SnappingClient) || !GetId().has_value())
+		return;
+
+	// Cross of two diameters = readable “ball” (vanilla laser colors differ by type).
+	const int LaserType = m_Style == STYLE_BLUE ? LASERTYPE_SHOTGUN : LASERTYPE_GUN;
+	const float Ang = (Server()->Tick() % 40) * (2.0f * PI / 40.0f);
+	const float Ang2 = Ang + PI * 0.5f;
+	const vec2 A = m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * m_Radius;
+	const vec2 B = m_Pos - vec2(std::cos(Ang), std::sin(Ang)) * m_Radius;
+	const int Version = GameServer()->GetClientVersion(SnappingClient);
+	// Primary diameter (entity id). Secondary uses a free-ish visual via second segment
+	// along the same id is not possible — snap one diameter + short core segment.
+	GameServer()->SnapLaserObject(
+		CSnapContext(Version, Server()->IsSixup(SnappingClient), SnappingClient),
+		GetId().value(), B, A, StableLaserTick(m_SpawnTick, Server()), m_Owner, LaserType, 0, -1, LASERFLAG_NO_PREDICT);
+	(void)Ang2;
+}
+
+void CHoGojoFusionOrb::SwapClients(int Client1, int Client2)
+{
+	m_Owner = m_Owner == Client1 ? Client2 : (m_Owner == Client2 ? Client1 : m_Owner);
 }
 
 void HoGojoToggleUnlimitedVoid(CGameContext *pGameServer, CPlayer *pPlayer)
@@ -640,41 +738,65 @@ static void HoGojoTickVoidDomain(CCharacter *pOwner)
 	}
 }
 
-// 茈 charge-time VFX: 苍/赫 orbs above head grow and drift inward with charge.
+static void HoGojoEnsureFusionOrbs(CCharacter *pChr)
+{
+	CPlayer *pPlayer = pChr->GetPlayer();
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pPlayer || !pGameServer)
+		return;
+	if(!pPlayer->m_pHoGojoFusionBlue)
+		new CHoGojoFusionOrb(&pGameServer->m_World, pPlayer->GetCid(), CHoGojoFusionOrb::STYLE_BLUE);
+	if(!pPlayer->m_pHoGojoFusionRed)
+		new CHoGojoFusionOrb(&pGameServer->m_World, pPlayer->GetCid(), CHoGojoFusionOrb::STYLE_RED);
+}
+
+// Frac 0→1 while charging: orbs grow and slide toward center above the head.
+// MergeProgress 0→1 after release: finish slamming together into one.
+static void HoGojoUpdateFusionOrbs(CCharacter *pChr, float Frac, float MergeProgress)
+{
+	CPlayer *pPlayer = pChr->GetPlayer();
+	if(!pPlayer)
+		return;
+	HoGojoEnsureFusionOrbs(pChr);
+
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -52.0f);
+	// Charge: start wide, grow, ease inward. Merge: crush remaining gap to center.
+	const float ChargeIn = Frac * 0.55f;
+	const float Spread = 78.0f * (1.0f - ChargeIn) * (1.0f - MergeProgress);
+	const float OrbR = 10.0f + Frac * 22.0f + MergeProgress * 8.0f;
+	const float Lift = -4.0f * (1.0f - Frac);
+
+	const vec2 BluePos = Head + vec2(-Spread, Lift);
+	const vec2 RedPos = Head + vec2(Spread, Lift);
+
+	if(pPlayer->m_pHoGojoFusionBlue)
+		pPlayer->m_pHoGojoFusionBlue->SetVisual(BluePos, OrbR);
+	if(pPlayer->m_pHoGojoFusionRed)
+		pPlayer->m_pHoGojoFusionRed->SetVisual(RedPos, OrbR);
+
+	// Soft spark only when nearly merged (not a hammer storm).
+	if(MergeProgress > 0.7f || Frac > 0.9f)
+	{
+		CGameContext *pGameServer = pChr->GameServer();
+		if(pGameServer && pGameServer->Server()->Tick() % 3 == 0)
+			pGameServer->CreateDamageInd(Head, Frac * PI, 1, pChr->TeamMask());
+	}
+}
+
+// 茈 charge-time VFX: real laser orbs (not only damage stars).
 static void HoGojoTickPurpleChargeVfx(CCharacter *pChr, float Frac)
 {
-	CGameContext *pGameServer = pChr->GameServer();
-	if(!pGameServer)
-		return;
-
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -48.0f);
-	// Grow with charge; spread shrinks so they approach the midline.
-	const float OrbR = 6.0f + Frac * 36.0f;
-	const float Spread = 90.0f * (1.0f - Frac * 0.85f);
-	const vec2 BluePos = Head + vec2(-Spread, -6.0f * (1.0f - Frac));
-	const vec2 RedPos = Head + vec2(Spread, -6.0f * (1.0f - Frac));
-
-	// Density of sparks scales with orb size / charge (quiet — damage ind only).
-	const int Sparks = 1 + (int)(Frac * 4.0f);
-	pGameServer->CreateDamageInd(BluePos, PI, Sparks, pChr->TeamMask());
-	pGameServer->CreateDamageInd(RedPos, 0.0f, Sparks, pChr->TeamMask());
-	// Orbit markers for growing radius feel.
-	if(pGameServer->Server()->Tick() % 2 == 0)
-	{
-		const float Ang = pGameServer->Server()->Tick() * 0.35f;
-		pGameServer->CreateDamageInd(BluePos + vec2(std::cos(Ang), std::sin(Ang)) * OrbR, Ang, 1, pChr->TeamMask());
-		pGameServer->CreateDamageInd(RedPos + vec2(std::cos(Ang + PI), std::sin(Ang + PI)) * OrbR, Ang + PI, 1, pChr->TeamMask());
-	}
-	if(Frac > 0.55f)
-		pGameServer->CreateDamageInd(Head, Frac * PI * 2.0f, 1, pChr->TeamMask());
+	HoGojoUpdateFusionOrbs(pChr, Frac, 0.0f);
 }
 
 static void HoGojoStartPurpleMerge(CCharacter *pChr, vec2 Dir, float ChargeFrac)
 {
-	pChr->m_HoGojoPurpleMergeLeft = std::max(2, g_Config.m_HoGojoPurpleMergeTicks);
+	pChr->m_HoGojoPurpleMergeLeft = std::max(4, g_Config.m_HoGojoPurpleMergeTicks);
 	pChr->m_HoGojoPurpleDir = Dir;
 	pChr->m_HoGojoPurpleChargeFrac = ChargeFrac;
 	pChr->m_HoGojoChargeTicks = 0;
+	// Keep fusion orbs alive through the snap-together.
+	HoGojoEnsureFusionOrbs(pChr);
 	if(CGameContext *pGameServer = pChr->GameServer())
 		pGameServer->CreateSound(pChr->GetPos(), SOUND_WEAPON_SPAWN, pChr->TeamMask());
 }
@@ -685,23 +807,19 @@ static void HoGojoTickPurpleMerge(CCharacter *pChr)
 		return;
 
 	CGameContext *pGameServer = pChr->GameServer();
-	const int Total = std::max(2, g_Config.m_HoGojoPurpleMergeTicks);
+	CPlayer *pPlayer = pChr->GetPlayer();
+	const int Total = std::max(4, g_Config.m_HoGojoPurpleMergeTicks);
 	const int Left = pChr->m_HoGojoPurpleMergeLeft;
 	const float Progress = 1.0f - (float)Left / (float)Total; // 0 → 1 final snap-together
 
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -48.0f);
-	const float Spread = 18.0f * (1.0f - Progress);
-	const vec2 BluePos = Head + vec2(-Spread, 0.0f);
-	const vec2 RedPos = Head + vec2(Spread, 0.0f);
-	pGameServer->CreateDamageInd(BluePos, PI, 3, pChr->TeamMask());
-	pGameServer->CreateDamageInd(RedPos, 0.0f, 3, pChr->TeamMask());
-	pGameServer->CreateDamageInd(Head, Progress * PI * 2.0f, 2, pChr->TeamMask());
+	// Continue fusion motion from full charge toward center.
+	HoGojoUpdateFusionOrbs(pChr, pChr->m_HoGojoPurpleChargeFrac, Progress);
 
 	pChr->m_HoGojoPurpleMergeLeft--;
 	if(pChr->m_HoGojoPurpleMergeLeft > 0)
 		return;
 
-	// Launch 茈: size from charge (min = 数米级, max = 百米级直径). Phases walls.
+	// Orbs met → launch 茈 (modest size scale). Phases walls.
 	const float RMin = (float)std::max(16, g_Config.m_HoGojoPurpleRadiusMin);
 	const float RMax = (float)std::max((int)RMin, g_Config.m_HoGojoPurpleRadiusMax);
 	const float Radius = LerpF(RMin, RMax, pChr->m_HoGojoPurpleChargeFrac);
@@ -710,10 +828,12 @@ static void HoGojoTickPurpleMerge(CCharacter *pChr)
 		Dir = vec2(1, 0);
 	else
 		Dir = normalize(Dir);
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -52.0f);
 	const vec2 Start = pChr->m_Pos + Dir * 28.0f;
-	new CHoGojoProjectile(&pGameServer->m_World, pChr->GetPlayer()->GetCid(), Start, Dir, Radius, CHoGojoProjectile::TYPE_PURPLE);
-	pGameServer->CreateExplosion(Head, pChr->GetPlayer()->GetCid(), WEAPON_SHOTGUN, true, -1, pChr->TeamMask());
+	new CHoGojoProjectile(&pGameServer->m_World, pPlayer->GetCid(), Start, Dir, Radius, CHoGojoProjectile::TYPE_PURPLE);
 	pGameServer->CreateSound(pChr->GetPos(), SOUND_GRENADE_EXPLODE, pChr->TeamMask());
+	pGameServer->CreateDamageInd(Head, 0.0f, 4, pChr->TeamMask());
+	HoGojoClearFusionOrbs(pPlayer);
 }
 
 static void HoGojoSendChargeIndicator(CCharacter *pChr, int Mode, int ChargeTicks)
@@ -753,11 +873,10 @@ static void HoGojoSendChargeIndicator(CCharacter *pChr, int Mode, int ChargeTick
 		SizePx = LerpF((float)g_Config.m_HoGojoPurpleRadiusMin, (float)g_Config.m_HoGojoPurpleRadiusMax, Frac);
 	}
 
-	// Diameter in "tiles" (~meters at 32px/tile) for feel.
 	const float DiamTiles = (SizePx * 2.0f) / 32.0f;
 	char aBuf[160];
-	str_format(aBuf, sizeof(aBuf), "%s 蓄力 %d%% [%s]\n直径 ~%.1f 格  (松手释放)",
-		pName, Pct, aBar, DiamTiles);
+	str_format(aBuf, sizeof(aBuf), "%s 蓄力 %d%% [%s]\n半径 %.0fpx (~%.1f格直径)",
+		pName, Pct, aBar, SizePx, DiamTiles);
 	pPlayer->m_HoHpLastBroadcastTick = 0;
 	pGameServer->SendBroadcast(aBuf, pPlayer->GetCid(), true);
 }
@@ -805,6 +924,7 @@ void HoGojoTickCharacter(CCharacter *pChr)
 		pChr->m_HoGojoChargeTicks = 0;
 		pChr->m_HoGojoFireHeld = false;
 		pChr->m_HoGojoPurpleMergeLeft = 0;
+		HoGojoClearFusionOrbs(pPlayer);
 		return;
 	}
 
@@ -825,6 +945,9 @@ void HoGojoTickCharacter(CCharacter *pChr)
 	{
 		pChr->m_HoGojoChargeTicks = 0;
 		pChr->m_HoGojoFireHeld = false;
+		// Drop fusion orbs if no longer charging purple.
+		if(HoGojoShotgunMode(pPlayer) != HO_WPNMODE_SHOTGUN_PURPLE || pChr->GetActiveWeapon() != WEAPON_SHOTGUN)
+			HoGojoClearFusionOrbs(pPlayer);
 		return;
 	}
 
@@ -882,11 +1005,22 @@ void HoGojoTickCharacter(CCharacter *pChr)
 			// New 苍 replaces free-flying previous one.
 			HoGojoCast(pChr, Mode, pChr->m_HoGojoChargeTicks, Dir);
 		}
+		else if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
+		{
+			// Released too early — cancel fusion orbs.
+			HoGojoClearFusionOrbs(pPlayer);
+		}
 		pChr->m_HoGojoChargeTicks = 0;
 		pChr->m_HoGojoFireHeld = false;
 	}
 	else
 	{
 		pChr->m_HoGojoChargeTicks = 0;
+		if(Mode != HO_WPNMODE_SHOTGUN_PURPLE || pChr->m_HoGojoPurpleMergeLeft <= 0)
+		{
+			// Not charging purple: no lingering orbs (except mid-merge handled above).
+			if(Mode != HO_WPNMODE_SHOTGUN_PURPLE)
+				HoGojoClearFusionOrbs(pPlayer);
+		}
 	}
 }
