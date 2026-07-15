@@ -533,15 +533,6 @@ void CCharacter::FireWeapon()
 
 	DoWeaponSwitch();
 
-	// Laser cannon is a continuous beam entity (hold fire). Skip FullAuto FireWeapon so we
-	// do not refresh AttackTick / predicted rifle shots every fire-delay (client laser SFX spam).
-	if(m_Core.m_ActiveWeapon == WEAPON_LASER && HoLaserCannonModeActive(m_pPlayer))
-		return;
-
-	// Gojo shotgun techniques: charge-on-hold / release-to-cast (HoGojoTickCharacter).
-	if(m_Core.m_ActiveWeapon == WEAPON_SHOTGUN && HoGojoTechniqueMode(m_pPlayer))
-		return;
-
 	vec2 MouseTarget = vec2(m_LatestInput.m_TargetX, m_LatestInput.m_TargetY);
 	vec2 Direction = normalize(MouseTarget);
 
@@ -567,17 +558,30 @@ void CCharacter::FireWeapon()
 	if(FullAuto && (m_LatestInput.m_Fire & 1) && m_Core.m_ActiveWeapon >= 0 && m_Core.m_aWeapons[m_Core.m_ActiveWeapon].m_Ammo)
 		WillFire = true;
 
+	// F3 weapon-select must run before laser-cannon / gojo early-outs.
+	// Otherwise technique modes never reach the menu (left-click does nothing).
+	if(m_pPlayer->m_HoWeaponSelectOpen)
+	{
+		if(WillFire && HoWeaponSelectOnFire(this))
+		{
+			m_AttackTick = Server()->Tick();
+			if(m_ReloadTimer == 0)
+				m_ReloadTimer = Server()->TickSpeed() / 4;
+		}
+		return;
+	}
+
 	if(!WillFire)
 		return;
 
-	// Weapon-select menu consumes fire (aim + left click to choose mode).
-	if(m_pPlayer->m_HoWeaponSelectOpen && HoWeaponSelectOnFire(this))
-	{
-		m_AttackTick = Server()->Tick();
-		if(m_ReloadTimer == 0)
-			m_ReloadTimer = Server()->TickSpeed() / 4;
+	// Laser cannon is a continuous beam entity (hold fire). Skip FullAuto FireWeapon so we
+	// do not refresh AttackTick / predicted rifle shots every fire-delay (client laser SFX spam).
+	if(m_Core.m_ActiveWeapon == WEAPON_LASER && HoLaserCannonModeActive(m_pPlayer))
 		return;
-	}
+
+	// Gojo shotgun techniques: charge-on-hold / release-to-cast (HoGojoTickCharacter).
+	if(m_Core.m_ActiveWeapon == WEAPON_SHOTGUN && HoGojoTechniqueMode(m_pPlayer))
+		return;
 
 	if(m_FreezeTime)
 	{
