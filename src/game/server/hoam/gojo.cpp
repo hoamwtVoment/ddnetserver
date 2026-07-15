@@ -533,13 +533,17 @@ void CHoGojoProjectile::Tick()
 
 	const float Speed = m_Type == TYPE_PURPLE ? (float)std::max(1, g_Config.m_HoGojoPurpleSpeed) : (float)std::max(1, g_Config.m_HoGojoRedSpeed);
 	const vec2 Next = m_Pos + m_Dir * Speed;
-	vec2 ColPos;
-	if(Collision()->IntersectLine(m_Pos, Next, &ColPos, nullptr))
+	// 茈 phases through walls; 赫 still collides.
+	if(m_Type != TYPE_PURPLE)
 	{
-		m_Pos = ColPos;
-		ApplyAoE(true);
-		Reset();
-		return;
+		vec2 ColPos;
+		if(Collision()->IntersectLine(m_Pos, Next, &ColPos, nullptr))
+		{
+			m_Pos = ColPos;
+			ApplyAoE(true);
+			Reset();
+			return;
+		}
 	}
 	m_Pos = Next;
 	ApplyAoE(false);
@@ -636,10 +640,40 @@ static void HoGojoTickVoidDomain(CCharacter *pOwner)
 	}
 }
 
-static void HoGojoStartPurpleMerge(CCharacter *pChr, vec2 Dir)
+// 茈 charge-time VFX: 苍/赫 orbs above head grow and drift inward with charge.
+static void HoGojoTickPurpleChargeVfx(CCharacter *pChr, float Frac)
 {
-	pChr->m_HoGojoPurpleMergeLeft = std::max(5, g_Config.m_HoGojoPurpleMergeTicks);
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pGameServer)
+		return;
+
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -48.0f);
+	// Grow with charge; spread shrinks so they approach the midline.
+	const float OrbR = 6.0f + Frac * 36.0f;
+	const float Spread = 90.0f * (1.0f - Frac * 0.85f);
+	const vec2 BluePos = Head + vec2(-Spread, -6.0f * (1.0f - Frac));
+	const vec2 RedPos = Head + vec2(Spread, -6.0f * (1.0f - Frac));
+
+	// Density of sparks scales with orb size / charge (quiet — damage ind only).
+	const int Sparks = 1 + (int)(Frac * 4.0f);
+	pGameServer->CreateDamageInd(BluePos, PI, Sparks, pChr->TeamMask());
+	pGameServer->CreateDamageInd(RedPos, 0.0f, Sparks, pChr->TeamMask());
+	// Orbit markers for growing radius feel.
+	if(pGameServer->Server()->Tick() % 2 == 0)
+	{
+		const float Ang = pGameServer->Server()->Tick() * 0.35f;
+		pGameServer->CreateDamageInd(BluePos + vec2(std::cos(Ang), std::sin(Ang)) * OrbR, Ang, 1, pChr->TeamMask());
+		pGameServer->CreateDamageInd(RedPos + vec2(std::cos(Ang + PI), std::sin(Ang + PI)) * OrbR, Ang + PI, 1, pChr->TeamMask());
+	}
+	if(Frac > 0.55f)
+		pGameServer->CreateDamageInd(Head, Frac * PI * 2.0f, 1, pChr->TeamMask());
+}
+
+static void HoGojoStartPurpleMerge(CCharacter *pChr, vec2 Dir, float ChargeFrac)
+{
+	pChr->m_HoGojoPurpleMergeLeft = std::max(2, g_Config.m_HoGojoPurpleMergeTicks);
 	pChr->m_HoGojoPurpleDir = Dir;
+	pChr->m_HoGojoPurpleChargeFrac = ChargeFrac;
 	pChr->m_HoGojoChargeTicks = 0;
 	if(CGameContext *pGameServer = pChr->GameServer())
 		pGameServer->CreateSound(pChr->GetPos(), SOUND_WEAPON_SPAWN, pChr->TeamMask());
@@ -651,41 +685,81 @@ static void HoGojoTickPurpleMerge(CCharacter *pChr)
 		return;
 
 	CGameContext *pGameServer = pChr->GameServer();
-	const int Total = std::max(5, g_Config.m_HoGojoPurpleMergeTicks);
+	const int Total = std::max(2, g_Config.m_HoGojoPurpleMergeTicks);
 	const int Left = pChr->m_HoGojoPurpleMergeLeft;
-	const float Progress = 1.0f - (float)Left / (float)Total; // 0 → 1
+	const float Progress = 1.0f - (float)Left / (float)Total; // 0 → 1 final snap-together
 
-	// Head: slightly above tee. 苍 left, 赫 right → merge to center.
-	const vec2 Head = pChr->m_Pos + vec2(0.0f, -46.0f);
-	const float Spread = 72.0f * (1.0f - Progress);
-	const vec2 BluePos = Head + vec2(-Spread, -8.0f * (1.0f - Progress));
-	const vec2 RedPos = Head + vec2(Spread, -8.0f * (1.0f - Progress));
-
-	// Visual: damage sparks + hammer hits traveling inward.
-	pGameServer->CreateDamageInd(BluePos, PI, 2, pChr->TeamMask());
-	pGameServer->CreateDamageInd(RedPos, 0.0f, 2, pChr->TeamMask());
-	if(pGameServer->Server()->Tick() % 2 == 0)
-	{
-		pGameServer->CreateHammerHit(BluePos, pChr->TeamMask());
-		pGameServer->CreateHammerHit(RedPos, pChr->TeamMask());
-	}
-	// Laser-like segment between the two orbs (using explosion-free feedback).
-	if(Progress > 0.15f)
-		pGameServer->CreateDamageInd(Head, Progress * PI * 2.0f, 1, pChr->TeamMask());
+	const vec2 Head = pChr->m_Pos + vec2(0.0f, -48.0f);
+	const float Spread = 18.0f * (1.0f - Progress);
+	const vec2 BluePos = Head + vec2(-Spread, 0.0f);
+	const vec2 RedPos = Head + vec2(Spread, 0.0f);
+	pGameServer->CreateDamageInd(BluePos, PI, 3, pChr->TeamMask());
+	pGameServer->CreateDamageInd(RedPos, 0.0f, 3, pChr->TeamMask());
+	pGameServer->CreateDamageInd(Head, Progress * PI * 2.0f, 2, pChr->TeamMask());
 
 	pChr->m_HoGojoPurpleMergeLeft--;
 	if(pChr->m_HoGojoPurpleMergeLeft > 0)
 		return;
 
-	// Fusion complete → fixed-size 茈.
-	const float Radius = (float)std::max(16, g_Config.m_HoGojoPurpleRadius);
+	// Launch 茈: size from charge (min = 数米级, max = 百米级直径). Phases walls.
+	const float RMin = (float)std::max(16, g_Config.m_HoGojoPurpleRadiusMin);
+	const float RMax = (float)std::max((int)RMin, g_Config.m_HoGojoPurpleRadiusMax);
+	const float Radius = LerpF(RMin, RMax, pChr->m_HoGojoPurpleChargeFrac);
 	vec2 Dir = pChr->m_HoGojoPurpleDir;
 	if(length(Dir) < 0.001f)
 		Dir = vec2(1, 0);
-	const vec2 Start = pChr->m_Pos + normalize(Dir) * 28.0f;
+	else
+		Dir = normalize(Dir);
+	const vec2 Start = pChr->m_Pos + Dir * 28.0f;
 	new CHoGojoProjectile(&pGameServer->m_World, pChr->GetPlayer()->GetCid(), Start, Dir, Radius, CHoGojoProjectile::TYPE_PURPLE);
 	pGameServer->CreateExplosion(Head, pChr->GetPlayer()->GetCid(), WEAPON_SHOTGUN, true, -1, pChr->TeamMask());
 	pGameServer->CreateSound(pChr->GetPos(), SOUND_GRENADE_EXPLODE, pChr->TeamMask());
+}
+
+static void HoGojoSendChargeIndicator(CCharacter *pChr, int Mode, int ChargeTicks)
+{
+	CPlayer *pPlayer = pChr->GetPlayer();
+	CGameContext *pGameServer = pChr->GameServer();
+	if(!pPlayer || !pGameServer)
+		return;
+	// ~4 Hz so it feels live without flooding.
+	if(pGameServer->Server()->Tick() % (std::max(1, pGameServer->Server()->TickSpeed() / 4)) != 0)
+		return;
+
+	const float Frac = ClampChargeFrac(ChargeTicks);
+	const int Pct = (int)std::lround(Frac * 100.0f);
+	const int Bars = 10;
+	const int Filled = std::clamp((int)std::lround(Frac * Bars), 0, Bars);
+	char aBar[32];
+	for(int i = 0; i < Bars; i++)
+		aBar[i] = i < Filled ? '|' : '.';
+	aBar[Bars] = '\0';
+
+	const char *pName = "Charge";
+	float SizePx = 0.0f;
+	if(Mode == HO_WPNMODE_SHOTGUN_BLUE)
+	{
+		pName = "苍";
+		SizePx = LerpF((float)g_Config.m_HoGojoBlueRadiusMin, (float)g_Config.m_HoGojoBlueRadiusMax, Frac);
+	}
+	else if(Mode == HO_WPNMODE_SHOTGUN_RED)
+	{
+		pName = "赫";
+		SizePx = LerpF((float)g_Config.m_HoGojoRedRadiusMin, (float)g_Config.m_HoGojoRedRadiusMax, Frac);
+	}
+	else if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
+	{
+		pName = "茈";
+		SizePx = LerpF((float)g_Config.m_HoGojoPurpleRadiusMin, (float)g_Config.m_HoGojoPurpleRadiusMax, Frac);
+	}
+
+	// Diameter in "tiles" (~meters at 32px/tile) for feel.
+	const float DiamTiles = (SizePx * 2.0f) / 32.0f;
+	char aBuf[160];
+	str_format(aBuf, sizeof(aBuf), "%s 蓄力 %d%% [%s]\n直径 ~%.1f 格  (松手释放)",
+		pName, Pct, aBar, DiamTiles);
+	pPlayer->m_HoHpLastBroadcastTick = 0;
+	pGameServer->SendBroadcast(aBuf, pPlayer->GetCid(), true);
 }
 
 static void HoGojoCast(CCharacter *pChr, int Mode, int ChargeTicks, vec2 Dir)
@@ -715,8 +789,8 @@ static void HoGojoCast(CCharacter *pChr, int Mode, int ChargeTicks, vec2 Dir)
 	}
 	else if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
 	{
-		// Fixed size; charge only gates minimum hold, then merge animation.
-		HoGojoStartPurpleMerge(pChr, Dir);
+		// Grow happened while charging; short final fusion then launch (size from charge).
+		HoGojoStartPurpleMerge(pChr, Dir, Frac);
 	}
 }
 
@@ -781,14 +855,18 @@ void HoGojoTickCharacter(CCharacter *pChr)
 	{
 		if(pChr->m_HoGojoChargeTicks < MaxT)
 			pChr->m_HoGojoChargeTicks++;
-		if(pChr->m_HoGojoChargeTicks > 0 && pChr->GameServer()->Server()->Tick() % 3 == 0)
+		const float Frac = ClampChargeFrac(pChr->m_HoGojoChargeTicks);
+		// 茈: grow 苍/赫 orbs while charging (not only after release).
+		if(Mode == HO_WPNMODE_SHOTGUN_PURPLE)
+			HoGojoTickPurpleChargeVfx(pChr, Frac);
+		else if(pChr->m_HoGojoChargeTicks > 0 && pChr->GameServer()->Server()->Tick() % 3 == 0)
 		{
-			const float Frac = ClampChargeFrac(pChr->m_HoGojoChargeTicks);
 			const float Orbit = 20.0f + Frac * 40.0f;
 			const float Ang = pChr->GameServer()->Server()->Tick() * 0.4f;
 			const vec2 P = pChr->m_Pos + vec2(std::cos(Ang), std::sin(Ang)) * Orbit;
 			pChr->GameServer()->CreateDamageInd(P, Ang, 1, pChr->TeamMask());
 		}
+		HoGojoSendChargeIndicator(pChr, Mode, pChr->m_HoGojoChargeTicks);
 		pChr->m_HoGojoFireHeld = true;
 	}
 	else if(pChr->m_HoGojoFireHeld)

@@ -43,6 +43,9 @@ private:
 	bool m_TeleportCancelled;
 	bool m_IsBlueTeleport;
 	bool m_BelongsToPracticeTeam;
+	// Stuck on Unlimited Void shell: beam remains visible, no bounce/destroy immediate.
+	bool m_StuckOnVoid;
+	int m_VoidHoldLeft;
 	void SyncInteractState();
 };
 

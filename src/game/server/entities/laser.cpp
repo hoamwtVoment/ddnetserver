@@ -30,6 +30,8 @@ CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEner
 	m_TeleportCancelled = false;
 	m_IsBlueTeleport = false;
 	m_ZeroEnergyBounceInLastTick = false;
+	m_StuckOnVoid = false;
+	m_VoidHoldLeft = 0;
 	m_TuneZone = GameServer()->Collision()->IsTune(GameServer()->Collision()->GetMapIndex(m_Pos));
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 	m_BelongsToPracticeTeam = pOwnerChar && pOwnerChar->Teams()->IsPractice(pOwnerChar->Team());
@@ -124,7 +126,7 @@ void CLaser::DoBounce()
 
 	vec2 To = m_Pos + m_Dir * m_Energy;
 
-	// Unlimited Void: shotgun/laser rays stop on the domain shell (like hooks), not on the body.
+	// Unlimited Void: shotgun/laser rays stick on the domain shell (stay visible, no bounce).
 	vec2 VoidHit;
 	const bool HitVoid = HoGojoVoidClipSegment(GameServer(), m_Pos, To, m_Owner, &VoidHit);
 	if(HitVoid)
@@ -134,10 +136,12 @@ void CLaser::DoBounce()
 
 	if(HitVoid && !Res)
 	{
-		// Stop on void sphere — no bounce, no character hit.
+		// Stick: beam remains From→shell until hold expires (Tick skips further bounce).
 		m_From = m_Pos;
 		m_Pos = VoidHit;
-		m_Energy = -1;
+		m_StuckOnVoid = true;
+		m_VoidHoldLeft = std::max(10, g_Config.m_HoGojoVoidHoldTicks);
+		m_Energy = 0;
 		return;
 	}
 
@@ -290,6 +294,14 @@ void CLaser::Tick()
 		{
 			Reset();
 		}
+	}
+
+	// Stay on Unlimited Void shell for a while (hook-like stick).
+	if(m_StuckOnVoid)
+	{
+		if(--m_VoidHoldLeft <= 0)
+			Reset();
+		return;
 	}
 
 	float Delay = TuningList()[m_TuneZone].m_LaserBounceDelay;

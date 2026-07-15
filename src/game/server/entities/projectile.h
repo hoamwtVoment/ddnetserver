@@ -53,6 +53,8 @@ private:
 	int m_DDRaceTeam;
 	bool m_IsSolo;
 	vec2 m_InitDir;
+	// Stuck on Unlimited Void domain shell (no explode / no body hit).
+	bool m_StuckOnVoid;
 
 public:
 	void SetBouncing(int Value);

@@ -73,6 +73,7 @@ CCharacter::CCharacter(CGameWorld *pWorld, CNetObj_PlayerInput LastInput) :
 	m_HoGojoFireHeld = false;
 	m_HoGojoPurpleMergeLeft = 0;
 	m_HoGojoPurpleDir = vec2(1, 0);
+	m_HoGojoPurpleChargeFrac = 0.0f;
 	m_HoGojoVoidHadCollisionOff = false;
 
 	m_Input = LastInput;

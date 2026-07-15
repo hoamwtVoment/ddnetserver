@@ -43,6 +43,7 @@ CProjectile::CProjectile(
 	m_Freeze = Freeze;
 
 	m_InitDir = InitDir;
+	m_StuckOnVoid = false;
 	m_TuneZone = GameServer()->Collision()->IsTune(GameServer()->Collision()->GetMapIndex(m_Pos));
 
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
@@ -87,6 +88,16 @@ vec2 CProjectile::GetPos(float Time)
 
 void CProjectile::Tick()
 {
+	// Stuck on Unlimited Void shell: stay put, no explode, quiet despawn.
+	if(m_StuckOnVoid)
+	{
+		if(m_LifeSpan > -1)
+			m_LifeSpan--;
+		if(m_LifeSpan <= 0)
+			m_MarkedForDestroy = true;
+		return;
+	}
+
 	float Pt = (Server()->Tick() - m_StartTick - 1) / (float)Server()->TickSpeed();
 	float Ct = (Server()->Tick() - m_StartTick) / (float)Server()->TickSpeed();
 	vec2 PrevPos = GetPos(Pt);
@@ -99,8 +110,7 @@ void CProjectile::Tick()
 	if(m_Owner >= 0)
 		pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
 
-	// Unlimited Void: gun/grenade (and any projectile) stop on domain shell, not on the body.
-	bool StoppedOnVoid = false;
+	// Unlimited Void: stick on domain shell (grenade does NOT explode).
 	vec2 VoidHit;
 	if(HoGojoVoidClipSegment(GameServer(), PrevPos, CurPos, m_Owner, &VoidHit))
 	{
@@ -108,16 +118,21 @@ void CProjectile::Tick()
 		const float DistVoid = distance(PrevPos, VoidHit);
 		if(DistVoid <= DistWall)
 		{
-			ColPos = VoidHit;
-			Collide = 1;
-			StoppedOnVoid = true;
+			m_StuckOnVoid = true;
+			m_Pos = VoidHit;
+			m_Direction = vec2(0.0f, 0.0f);
+			m_StartTick = Server()->Tick();
+			// Hold at least void-hold ticks if remaining life is short.
+			const int Hold = std::max(10, g_Config.m_HoGojoVoidHoldTicks);
+			if(m_LifeSpan >= 0 && m_LifeSpan < Hold)
+				m_LifeSpan = Hold;
+			return;
 		}
 	}
 
 	CCharacter *pTargetChr = nullptr;
 
-	// Skip character hit when the shot dies on a void shell first.
-	if(!StoppedOnVoid && (pOwnerChar ? !pOwnerChar->GrenadeHitDisabled() : g_Config.m_SvHit))
+	if(pOwnerChar ? !pOwnerChar->GrenadeHitDisabled() : g_Config.m_SvHit)
 		pTargetChr = GameServer()->m_World.IntersectCharacter(PrevPos, ColPos, m_Freeze ? 1.0f : 6.0f, ColPos, pOwnerChar, m_Owner);
 
 	if(m_LifeSpan > -1)

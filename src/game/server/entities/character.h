@@ -269,6 +269,7 @@ public:
 	bool m_HoGojoFireHeld;
 	int m_HoGojoPurpleMergeLeft;
 	vec2 m_HoGojoPurpleDir;
+	float m_HoGojoPurpleChargeFrac;
 	// Unlimited Void temporarily forces collision off; restore when domain ends
 	bool m_HoGojoVoidHadCollisionOff;
 
