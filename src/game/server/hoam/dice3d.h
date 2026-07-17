@@ -45,6 +45,6 @@ private:
 };
 
 void HoRegisterDice3DCommands(CGameContext *pGameServer);
-int HoDice3DHammerHit(CGameContext *pGameServer, vec2 HammerPos, vec2 HammererPos);
+int HoDice3DHammerHit(CGameContext *pGameServer, vec2 HammerPos, vec2 HammererPos, CClientMask Mask);
 
 #endif // GAME_SERVER_HOAM_DICE3D_H

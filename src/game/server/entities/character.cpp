@@ -662,7 +662,7 @@ void CCharacter::FireWeapon()
 
 			Hits++;
 		}
-		Hits += HoDice3DHammerHit(GameServer(), ProjStartPos, m_Pos);
+		Hits += HoDice3DHammerHit(GameServer(), ProjStartPos, m_Pos, TeamMask());
 
 		// if we Hit anything, we have to wait for the reload
 		if(Hits)

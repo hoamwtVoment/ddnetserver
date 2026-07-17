@@ -449,7 +449,7 @@ void HoRegisterDice3DCommands(CGameContext *pGameServer)
 	pGameServer->Console()->Register("ho_dice3d_clear", "", CFGFLAG_SERVER, ConHoDice3DClear, pGameServer, "Remove all simulated 3D dice");
 }
 
-int HoDice3DHammerHit(CGameContext *pGameServer, vec2 HammerPos, vec2 HammererPos)
+int HoDice3DHammerHit(CGameContext *pGameServer, vec2 HammerPos, vec2 HammererPos, CClientMask Mask)
 {
 	CEntity *apEntities[16];
 	const int Num = pGameServer->m_World.FindEntities(HammerPos, 18.0f, apEntities, 16, CGameWorld::ENTTYPE_HO_DICE3D);
@@ -459,8 +459,10 @@ int HoDice3DHammerHit(CGameContext *pGameServer, vec2 HammerPos, vec2 HammererPo
 		auto *pDice = static_cast<CHoDice3D *>(apEntities[i]);
 		vec2 Direction = pDice->GetPos() - HammererPos;
 		Direction = length(Direction) > 0.001f ? normalize(Direction) : vec2(0.0f, -1.0f);
-		if(pDice->HammerHit(Direction * 7.0f + vec2(0.0f, -8.0f), HammererPos))
-			Hits++;
+		if(!pDice->HammerHit(Direction * 7.0f + vec2(0.0f, -8.0f), HammererPos))
+			continue;
+		pGameServer->CreateHammerHit(pDice->GetPos() - Direction * 18.0f, Mask);
+		Hits++;
 	}
 	return Hits;
 }
