@@ -19,6 +19,7 @@ public:
 	};
 
 	static constexpr int MAX_VERTICES = 32;
+	static constexpr int MAX_VISUAL_EDGES = MAX_VERTICES * 3;
 	static constexpr int MAX_ID_DIGITS = 6;
 
 	CHoRigidBody(CGameWorld *pGameWorld, EKind Kind, vec2 Pos, int Sides, float Size, float Mass);
@@ -41,6 +42,7 @@ public:
 
 private:
 	void BuildVertices(std::array<vec2, MAX_VERTICES> &aVertices) const;
+	int BuildVisualEdges(std::array<vec2, MAX_VISUAL_EDGES> &aFrom, std::array<vec2, MAX_VISUAL_EDGES> &aTo) const;
 	bool ResolveMapCollision();
 	void ResolveCharacterCollision(CCharacter *pChr);
 	void UpdateHooks();
@@ -58,7 +60,7 @@ private:
 	vec2 m_Velocity;
 	int m_StillTicks;
 	bool m_DiceResultReported;
-	std::array<std::optional<int>, MAX_VERTICES> m_aSnapIds;
+	std::array<std::optional<int>, MAX_VISUAL_EDGES> m_aSnapIds;
 	std::array<std::array<std::optional<int>, 7>, MAX_ID_DIGITS> m_aaIdSnapIds;
 	std::array<bool, MAX_CLIENTS> m_aHooked;
 	std::array<vec2, MAX_CLIENTS> m_aHookLocalPos;

@@ -9,6 +9,7 @@
 #include <engine/shared/protocol.h>
 
 #include <generated/protocol.h>
+
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
 #include <game/server/player.h>
@@ -19,256 +20,256 @@
 
 namespace
 {
-constexpr float PI = 3.14159265358979323846f;
-constexpr float PLAYER_MASS = 5.0f;
-constexpr float MAP_RESTITUTION = 0.12f;
-constexpr float BODY_RESTITUTION = 0.08f;
-int s_NextRigidBodyId = 1;
-bool s_ShowRigidBodyIds = true;
+	constexpr float PI = 3.14159265358979323846f;
+	constexpr float PLAYER_MASS = 5.0f;
+	constexpr float MAP_RESTITUTION = 0.12f;
+	constexpr float BODY_RESTITUTION = 0.08f;
+	int s_NextRigidBodyId = 1;
+	bool s_ShowRigidBodyIds = true;
 
-constexpr unsigned char s_aDigitSegments[10] = {
-	0x3f, // 0
-	0x06, // 1
-	0x5b, // 2
-	0x4f, // 3
-	0x66, // 4
-	0x6d, // 5
-	0x7d, // 6
-	0x07, // 7
-	0x7f, // 8
-	0x6f, // 9
-};
-
-float Cross(vec2 A, vec2 B)
-{
-	return A.x * B.y - A.y * B.x;
-}
-
-vec2 Perpendicular(vec2 V)
-{
-	return vec2(-V.y, V.x);
-}
-
-vec2 Rotate(vec2 V, float Angle)
-{
-	const float C = std::cos(Angle);
-	const float S = std::sin(Angle);
-	return vec2(V.x * C - V.y * S, V.x * S + V.y * C);
-}
-
-float ClampMagnitude(float Value, float MaxMagnitude)
-{
-	return std::clamp(Value, -MaxMagnitude, MaxMagnitude);
-}
-
-bool SegmentIntersection(vec2 A, vec2 B, vec2 C, vec2 D, float *pT, vec2 *pHit)
-{
-	const vec2 R = B - A;
-	const vec2 S = D - C;
-	const float Denom = Cross(R, S);
-	if(absolute(Denom) < 0.00001f)
-		return false;
-	const float T = Cross(C - A, S) / Denom;
-	const float U = Cross(C - A, R) / Denom;
-	if(T < 0.0f || T > 1.0f || U < 0.0f || U > 1.0f)
-		return false;
-	if(pT)
-		*pT = T;
-	if(pHit)
-		*pHit = A + R * T;
-	return true;
-}
-
-void Project(const vec2 *pVertices, int Count, vec2 Axis, float *pMin, float *pMax)
-{
-	*pMin = *pMax = dot(pVertices[0], Axis);
-	for(int i = 1; i < Count; ++i)
-	{
-		const float Value = dot(pVertices[i], Axis);
-		*pMin = std::min(*pMin, Value);
-		*pMax = std::max(*pMax, Value);
-	}
-}
-
-bool PolygonTileMtv(const vec2 *pVertices, int Count, vec2 BodyCenter, vec2 TileCenter, vec2 *pMtv, vec2 *pNormal)
-{
-	const vec2 aTile[4] = {
-		TileCenter + vec2(-16.0f, -16.0f),
-		TileCenter + vec2(16.0f, -16.0f),
-		TileCenter + vec2(16.0f, 16.0f),
-		TileCenter + vec2(-16.0f, 16.0f),
+	constexpr unsigned char s_aDigitSegments[10] = {
+		0x3f, // 0
+		0x0e, // 1 (with a baseline so it is readable above the object)
+		0x5b, // 2
+		0x4f, // 3
+		0x66, // 4
+		0x6d, // 5
+		0x7d, // 6
+		0x07, // 7
+		0x7f, // 8
+		0x6f, // 9
 	};
 
-	float BestOverlap = std::numeric_limits<float>::max();
-	vec2 BestAxis(0.0f, -1.0f);
-	for(int AxisIndex = 0; AxisIndex < Count + 2; ++AxisIndex)
+	float Cross(vec2 A, vec2 B)
 	{
-		vec2 Axis;
-		if(AxisIndex == 0)
-			Axis = vec2(1.0f, 0.0f);
-		else if(AxisIndex == 1)
-			Axis = vec2(0.0f, 1.0f);
-		else
-		{
-			const vec2 Edge = pVertices[(AxisIndex - 1) % Count] - pVertices[AxisIndex - 2];
-			if(length(Edge) < 0.0001f)
-				continue;
-			Axis = normalize(Perpendicular(Edge));
-		}
+		return A.x * B.y - A.y * B.x;
+	}
 
-		float BodyMin, BodyMax, TileMin, TileMax;
-		Project(pVertices, Count, Axis, &BodyMin, &BodyMax);
-		Project(aTile, 4, Axis, &TileMin, &TileMax);
-		const float Overlap = std::min(BodyMax, TileMax) - std::max(BodyMin, TileMin);
-		if(Overlap <= 0.0f)
+	vec2 Perpendicular(vec2 V)
+	{
+		return vec2(-V.y, V.x);
+	}
+
+	vec2 Rotate(vec2 V, float Angle)
+	{
+		const float C = std::cos(Angle);
+		const float S = std::sin(Angle);
+		return vec2(V.x * C - V.y * S, V.x * S + V.y * C);
+	}
+
+	float ClampMagnitude(float Value, float MaxMagnitude)
+	{
+		return std::clamp(Value, -MaxMagnitude, MaxMagnitude);
+	}
+
+	bool SegmentIntersection(vec2 A, vec2 B, vec2 C, vec2 D, float *pT, vec2 *pHit)
+	{
+		const vec2 R = B - A;
+		const vec2 S = D - C;
+		const float Denom = Cross(R, S);
+		if(absolute(Denom) < 0.00001f)
 			return false;
-		if(Overlap < BestOverlap)
+		const float T = Cross(C - A, S) / Denom;
+		const float U = Cross(C - A, R) / Denom;
+		if(T < 0.0f || T > 1.0f || U < 0.0f || U > 1.0f)
+			return false;
+		if(pT)
+			*pT = T;
+		if(pHit)
+			*pHit = A + R * T;
+		return true;
+	}
+
+	void Project(const vec2 *pVertices, int Count, vec2 Axis, float *pMin, float *pMax)
+	{
+		*pMin = *pMax = dot(pVertices[0], Axis);
+		for(int i = 1; i < Count; ++i)
 		{
-			BestOverlap = Overlap;
-			BestAxis = Axis;
+			const float Value = dot(pVertices[i], Axis);
+			*pMin = std::min(*pMin, Value);
+			*pMax = std::max(*pMax, Value);
 		}
 	}
 
-	if(dot(BodyCenter - TileCenter, BestAxis) < 0.0f)
-		BestAxis *= -1.0f;
-	*pNormal = BestAxis;
-	*pMtv = BestAxis * (BestOverlap + 0.01f);
-	return true;
-}
-
-vec2 SpawnPosition(CGameContext *pGameServer, IConsole::IResult *pResult, int CoordArg)
-{
-	if(pResult->NumArguments() >= CoordArg + 2)
-		return vec2(pResult->GetFloat(CoordArg) * 32.0f, pResult->GetFloat(CoordArg + 1) * 32.0f);
-
-	const int ClientId = pResult->m_ClientId;
-	if(ClientId >= 0 && ClientId < MAX_CLIENTS && pGameServer->m_apPlayers[ClientId])
+	bool PolygonTileMtv(const vec2 *pVertices, int Count, vec2 BodyCenter, vec2 TileCenter, vec2 *pMtv, vec2 *pNormal)
 	{
-		CPlayer *pPlayer = pGameServer->m_apPlayers[ClientId];
-		CCharacter *pChr = pGameServer->GetPlayerChar(ClientId);
-		if(pChr && pChr->IsAlive() && !pPlayer->IsPaused())
+		const vec2 aTile[4] = {
+			TileCenter + vec2(-16.0f, -16.0f),
+			TileCenter + vec2(16.0f, -16.0f),
+			TileCenter + vec2(16.0f, 16.0f),
+			TileCenter + vec2(-16.0f, 16.0f),
+		};
+
+		float BestOverlap = std::numeric_limits<float>::max();
+		vec2 BestAxis(0.0f, -1.0f);
+		for(int AxisIndex = 0; AxisIndex < Count + 2; ++AxisIndex)
 		{
-			const vec2 Target(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
-			return pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
+			vec2 Axis;
+			if(AxisIndex == 0)
+				Axis = vec2(1.0f, 0.0f);
+			else if(AxisIndex == 1)
+				Axis = vec2(0.0f, 1.0f);
+			else
+			{
+				const vec2 Edge = pVertices[(AxisIndex - 1) % Count] - pVertices[AxisIndex - 2];
+				if(length(Edge) < 0.0001f)
+					continue;
+				Axis = normalize(Perpendicular(Edge));
+			}
+
+			float BodyMin, BodyMax, TileMin, TileMax;
+			Project(pVertices, Count, Axis, &BodyMin, &BodyMax);
+			Project(aTile, 4, Axis, &TileMin, &TileMax);
+			const float Overlap = std::min(BodyMax, TileMax) - std::max(BodyMin, TileMin);
+			if(Overlap <= 0.0f)
+				return false;
+			if(Overlap < BestOverlap)
+			{
+				BestOverlap = Overlap;
+				BestAxis = Axis;
+			}
 		}
-		return pPlayer->m_ViewPos;
-	}
-	return vec2(0.0f, 0.0f);
-}
 
-CHoRigidBody *FindRigidBody(CGameContext *pGameServer, int BodyId)
-{
-	for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
-	{
-		auto *pBody = static_cast<CHoRigidBody *>(pEnt);
-		if(pBody->BodyId() == BodyId)
-			return pBody;
+		if(dot(BodyCenter - TileCenter, BestAxis) < 0.0f)
+			BestAxis *= -1.0f;
+		*pNormal = BestAxis;
+		*pMtv = BestAxis * (BestOverlap + 0.01f);
+		return true;
 	}
-	return nullptr;
-}
 
-void ConHoBlock(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	const float Size = pResult->GetFloat(0);
-	const float Mass = pResult->GetFloat(1);
-	if(Size < 32.0f || Size > 512.0f || Mass < 0.1f || Mass > 1000.0f)
+	vec2 SpawnPosition(CGameContext *pGameServer, IConsole::IResult *pResult, int CoordArg)
 	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", "size must be 32..512 pixels and mass 0.1..1000");
-		return;
-	}
-	if(pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED && pResult->NumArguments() < 4)
-	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", "server console usage: ho_block [size] [mass] [tile x] [tile y]");
-		return;
-	}
-	const vec2 Pos = SpawnPosition(pGameServer, pResult, 2);
-	auto *pBody = new CHoRigidBody(&pGameServer->m_World, CHoRigidBody::EKind::BLOCK, Pos, 4, Size, Mass);
-	char aBuf[160];
-	str_format(aBuf, sizeof(aBuf), "spawned block #%d: size %.1f, mass %.2f at %.2f %.2f tiles", pBody->BodyId(), Size, Mass, Pos.x / 32.0f, Pos.y / 32.0f);
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", aBuf);
-}
+		if(pResult->NumArguments() >= CoordArg + 2)
+			return vec2(pResult->GetFloat(CoordArg) * 32.0f, pResult->GetFloat(CoordArg + 1) * 32.0f);
 
-void ConHoDice(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	const int Faces = pResult->GetInteger(0);
-	const float Size = pResult->GetFloat(1);
-	const float Mass = pResult->GetFloat(2);
-	if(Faces < 3 || Faces > CHoRigidBody::MAX_VERTICES || Size < 32.0f || Size > 512.0f || Mass < 0.1f || Mass > 1000.0f)
-	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", "faces must be 3..32, size 32..512 pixels and mass 0.1..1000");
-		return;
+		const int ClientId = pResult->m_ClientId;
+		if(ClientId >= 0 && ClientId < MAX_CLIENTS && pGameServer->m_apPlayers[ClientId])
+		{
+			CPlayer *pPlayer = pGameServer->m_apPlayers[ClientId];
+			CCharacter *pChr = pGameServer->GetPlayerChar(ClientId);
+			if(pChr && pChr->IsAlive() && !pPlayer->IsPaused())
+			{
+				const vec2 Target(pChr->Core()->m_Input.m_TargetX, pChr->Core()->m_Input.m_TargetY);
+				return pPlayer->m_CameraInfo.ConvertTargetToWorld(pChr->GetPos(), Target);
+			}
+			return pPlayer->m_ViewPos;
+		}
+		return vec2(0.0f, 0.0f);
 	}
-	if(pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED && pResult->NumArguments() < 5)
-	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", "server console usage: ho_dice [faces] [size] [mass] [tile x] [tile y]");
-		return;
-	}
-	const vec2 Pos = SpawnPosition(pGameServer, pResult, 3);
-	auto *pBody = new CHoRigidBody(&pGameServer->m_World, CHoRigidBody::EKind::DICE, Pos, Faces, Size, Mass);
-	char aBuf[160];
-	str_format(aBuf, sizeof(aBuf), "spawned d%d #%d: size %.1f, mass %.2f at %.2f %.2f tiles", Faces, pBody->BodyId(), Size, Mass, Pos.x / 32.0f, Pos.y / 32.0f);
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", aBuf);
-}
 
-void ConHoRigidClear(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	int Count = 0;
-	for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
+	CHoRigidBody *FindRigidBody(CGameContext *pGameServer, int BodyId)
 	{
-		pEnt->Reset();
-		++Count;
+		for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
+		{
+			auto *pBody = static_cast<CHoRigidBody *>(pEnt);
+			if(pBody->BodyId() == BodyId)
+				return pBody;
+		}
+		return nullptr;
 	}
-	char aBuf[96];
-	str_format(aBuf, sizeof(aBuf), "removed %d rigid bodies", Count);
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_clear", aBuf);
-}
 
-void ConHoRigidIds(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	if(pResult->NumArguments() > 0)
-		s_ShowRigidBodyIds = pResult->GetInteger(0) != 0;
-	char aBuf[64];
-	str_format(aBuf, sizeof(aBuf), "rigid body ID display is %s", s_ShowRigidBodyIds ? "on" : "off");
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_ids", aBuf);
-}
-
-void ConHoRigidDelete(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	const int BodyId = pResult->GetInteger(0);
-	CHoRigidBody *pBody = FindRigidBody(pGameServer, BodyId);
-	if(!pBody)
+	void ConHoBlock(IConsole::IResult *pResult, void *pUserData)
 	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_delete", "rigid body ID not found");
-		return;
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		const float Size = pResult->GetFloat(0);
+		const float Mass = pResult->GetFloat(1);
+		if(Size < 32.0f || Size > 512.0f || Mass < 0.1f || Mass > 1000.0f)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", "size must be 32..512 pixels and mass 0.1..1000");
+			return;
+		}
+		if(pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED && pResult->NumArguments() < 4)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", "server console usage: ho_block [size] [mass] [tile x] [tile y]");
+			return;
+		}
+		const vec2 Pos = SpawnPosition(pGameServer, pResult, 2);
+		auto *pBody = new CHoRigidBody(&pGameServer->m_World, CHoRigidBody::EKind::BLOCK, Pos, 4, Size, Mass);
+		char aBuf[160];
+		str_format(aBuf, sizeof(aBuf), "spawned block #%d: size %.1f, mass %.2f at %.2f %.2f tiles", pBody->BodyId(), Size, Mass, Pos.x / 32.0f, Pos.y / 32.0f);
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_block", aBuf);
 	}
-	pBody->Reset();
-	char aBuf[64];
-	str_format(aBuf, sizeof(aBuf), "removed rigid body #%d", BodyId);
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_delete", aBuf);
-}
 
-void ConHoRigidList(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	int Count = 0;
-	for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
+	void ConHoDice(IConsole::IResult *pResult, void *pUserData)
 	{
-		auto *pBody = static_cast<CHoRigidBody *>(pEnt);
-		char aBuf[144];
-		str_format(aBuf, sizeof(aBuf), "#%d %s sides=%d size=%.1f mass=%.2f pos=%.2f,%.2f tiles",
-			pBody->BodyId(), pBody->Kind() == CHoRigidBody::EKind::BLOCK ? "block" : "dice", pBody->Sides(),
-			pBody->Size(), pBody->Mass(), pBody->GetPos().x / 32.0f, pBody->GetPos().y / 32.0f);
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_list", aBuf);
-		++Count;
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		const int Faces = pResult->GetInteger(0);
+		const float Size = pResult->GetFloat(1);
+		const float Mass = pResult->GetFloat(2);
+		if(Faces < 3 || Faces > CHoRigidBody::MAX_VERTICES || Size < 32.0f || Size > 512.0f || Mass < 0.1f || Mass > 1000.0f)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", "faces must be 3..32, size 32..512 pixels and mass 0.1..1000");
+			return;
+		}
+		if(pResult->m_ClientId == IConsole::CLIENT_ID_UNSPECIFIED && pResult->NumArguments() < 5)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", "server console usage: ho_dice [faces] [size] [mass] [tile x] [tile y]");
+			return;
+		}
+		const vec2 Pos = SpawnPosition(pGameServer, pResult, 3);
+		auto *pBody = new CHoRigidBody(&pGameServer->m_World, CHoRigidBody::EKind::DICE, Pos, Faces, Size, Mass);
+		char aBuf[160];
+		str_format(aBuf, sizeof(aBuf), "spawned d%d #%d: size %.1f, mass %.2f at %.2f %.2f tiles", Faces, pBody->BodyId(), Size, Mass, Pos.x / 32.0f, Pos.y / 32.0f);
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice", aBuf);
 	}
-	if(Count == 0)
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_list", "no rigid bodies");
-}
+
+	void ConHoRigidClear(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		int Count = 0;
+		for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
+		{
+			pEnt->Reset();
+			++Count;
+		}
+		char aBuf[96];
+		str_format(aBuf, sizeof(aBuf), "removed %d rigid bodies", Count);
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_clear", aBuf);
+	}
+
+	void ConHoRigidIds(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		if(pResult->NumArguments() > 0)
+			s_ShowRigidBodyIds = pResult->GetInteger(0) != 0;
+		char aBuf[64];
+		str_format(aBuf, sizeof(aBuf), "rigid body ID display is %s", s_ShowRigidBodyIds ? "on" : "off");
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_ids", aBuf);
+	}
+
+	void ConHoRigidDelete(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		const int BodyId = pResult->GetInteger(0);
+		CHoRigidBody *pBody = FindRigidBody(pGameServer, BodyId);
+		if(!pBody)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_delete", "rigid body ID not found");
+			return;
+		}
+		pBody->Reset();
+		char aBuf[64];
+		str_format(aBuf, sizeof(aBuf), "removed rigid body #%d", BodyId);
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_delete", aBuf);
+	}
+
+	void ConHoRigidList(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		int Count = 0;
+		for(CEntity *pEnt = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_RIGIDBODY); pEnt; pEnt = pEnt->TypeNext())
+		{
+			auto *pBody = static_cast<CHoRigidBody *>(pEnt);
+			char aBuf[144];
+			str_format(aBuf, sizeof(aBuf), "#%d %s sides=%d size=%.1f mass=%.2f pos=%.2f,%.2f tiles",
+				pBody->BodyId(), pBody->Kind() == CHoRigidBody::EKind::BLOCK ? "block" : "dice", pBody->Sides(),
+				pBody->Size(), pBody->Mass(), pBody->GetPos().x / 32.0f, pBody->GetPos().y / 32.0f);
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_list", aBuf);
+			++Count;
+		}
+		if(Count == 0)
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_rigid_list", "no rigid bodies");
+	}
 } // namespace
 
 CHoRigidBody::CHoRigidBody(CGameWorld *pGameWorld, EKind Kind, vec2 Pos, int Sides, float Size, float Mass) :
@@ -292,7 +293,7 @@ CHoRigidBody::CHoRigidBody(CGameWorld *pGameWorld, EKind Kind, vec2 Pos, int Sid
 		if(absolute(m_AngularVelocity) < 0.025f)
 			m_AngularVelocity = 0.08f;
 	}
-	for(int i = 0; i < m_Sides; ++i)
+	for(int i = 0; i < m_Sides * 3; ++i)
 		m_aSnapIds[i] = Server()->SnapNewId();
 	for(auto &aDigitIds : m_aaIdSnapIds)
 		for(std::optional<int> &Id : aDigitIds)
@@ -325,6 +326,37 @@ void CHoRigidBody::BuildVertices(std::array<vec2, MAX_VERTICES> &aVertices) cons
 	}
 }
 
+int CHoRigidBody::BuildVisualEdges(std::array<vec2, MAX_VISUAL_EDGES> &aFrom, std::array<vec2, MAX_VISUAL_EDGES> &aTo) const
+{
+	// The physical polygon is the cross-section on the tee's depth layer. Two copies
+	// are projected equally in front of and behind that layer, so m_Pos remains the
+	// actual 3D center while the Door objects form a readable wireframe solid.
+	std::array<vec2, MAX_VERTICES> aMiddle;
+	BuildVertices(aMiddle);
+	const vec2 RestDepth(m_Size * 0.34f, -m_Size * 0.24f);
+	const float RestAngle = m_Kind == EKind::BLOCK ? PI * 0.25f : 0.0f;
+	const vec2 Depth = Rotate(RestDepth, m_Angle - RestAngle);
+
+	int Edge = 0;
+	for(int Layer = -1; Layer <= 1; Layer += 2)
+	{
+		const vec2 Offset = Depth * (Layer * 0.5f);
+		for(int i = 0; i < m_Sides; ++i)
+		{
+			aFrom[Edge] = aMiddle[i] + Offset;
+			aTo[Edge] = aMiddle[(i + 1) % m_Sides] + Offset;
+			++Edge;
+		}
+	}
+	for(int i = 0; i < m_Sides; ++i)
+	{
+		aFrom[Edge] = aMiddle[i] - Depth * 0.5f;
+		aTo[Edge] = aMiddle[i] + Depth * 0.5f;
+		++Edge;
+	}
+	return Edge;
+}
+
 float CHoRigidBody::InverseInertia() const
 {
 	// A solid disk is a stable approximation for all regular polygons used here.
@@ -352,16 +384,17 @@ void CHoRigidBody::ApplyCentralImpulse(vec2 Impulse)
 
 bool CHoRigidBody::IntersectSegment(vec2 From, vec2 To, vec2 *pHit, vec2 *pNormal) const
 {
-	std::array<vec2, MAX_VERTICES> aVertices;
-	BuildVertices(aVertices);
+	std::array<vec2, MAX_VISUAL_EDGES> aEdgeFrom;
+	std::array<vec2, MAX_VISUAL_EDGES> aEdgeTo;
+	const int NumEdges = BuildVisualEdges(aEdgeFrom, aEdgeTo);
 	float BestT = std::numeric_limits<float>::max();
 	int BestEdge = -1;
 	vec2 BestHit;
-	for(int i = 0; i < m_Sides; ++i)
+	for(int i = 0; i < NumEdges; ++i)
 	{
 		float T;
 		vec2 Hit;
-		if(SegmentIntersection(From, To, aVertices[i], aVertices[(i + 1) % m_Sides], &T, &Hit) && T < BestT)
+		if(SegmentIntersection(From, To, aEdgeFrom[i], aEdgeTo[i], &T, &Hit) && T < BestT)
 		{
 			BestT = T;
 			BestEdge = i;
@@ -374,7 +407,7 @@ bool CHoRigidBody::IntersectSegment(vec2 From, vec2 To, vec2 *pHit, vec2 *pNorma
 		*pHit = BestHit;
 	if(pNormal)
 	{
-		vec2 Normal = normalize(Perpendicular(aVertices[(BestEdge + 1) % m_Sides] - aVertices[BestEdge]));
+		vec2 Normal = normalize(Perpendicular(aEdgeTo[BestEdge] - aEdgeFrom[BestEdge]));
 		if(dot(Normal, BestHit - m_Pos) < 0.0f)
 			Normal *= -1.0f;
 		*pNormal = Normal;
@@ -447,14 +480,14 @@ bool CHoRigidBody::ResolveMapCollision()
 		{
 			const float Lever = Cross(R, BestNormal);
 			const float J = -(1.0f + MAP_RESTITUTION) * NormalVelocity /
-				(1.0f / m_Mass + Lever * Lever * InverseInertia());
+					(1.0f / m_Mass + Lever * Lever * InverseInertia());
 			ApplyImpulse(BestNormal * J, Contact, false);
 
 			const vec2 Tangent = Perpendicular(BestNormal);
 			const float TangentVelocity = dot(m_Velocity + Perpendicular(R) * m_AngularVelocity, Tangent);
 			const float TangentLever = Cross(R, Tangent);
 			float FrictionJ = -TangentVelocity /
-				(1.0f / m_Mass + TangentLever * TangentLever * InverseInertia());
+					  (1.0f / m_Mass + TangentLever * TangentLever * InverseInertia());
 			FrictionJ = std::clamp(FrictionJ, -J * 0.55f, J * 0.55f);
 			ApplyImpulse(Tangent * FrictionJ, Contact, false);
 		}
@@ -537,7 +570,7 @@ void CHoRigidBody::ResolveCharacterCollision(CCharacter *pChr)
 	{
 		const float Lever = Cross(R, Normal);
 		const float J = -(1.0f + BODY_RESTITUTION) * NormalVelocity /
-			(InvPlayerMass + InvBodyMass + Lever * Lever * InverseInertia());
+				(InvPlayerMass + InvBodyMass + Lever * Lever * InverseInertia());
 		Core.m_Vel += Normal * (J * InvPlayerMass);
 		ApplyImpulse(Normal * -J, Closest, absolute(J) > 1.0f);
 	}
@@ -643,14 +676,17 @@ void CHoRigidBody::Snap(int SnappingClient)
 {
 	if(NetworkClipped(SnappingClient))
 		return;
-	std::array<vec2, MAX_VERTICES> aVertices;
-	BuildVertices(aVertices);
+	std::array<vec2, MAX_VISUAL_EDGES> aEdgeFrom;
+	std::array<vec2, MAX_VISUAL_EDGES> aEdgeTo;
+	const int NumEdges = BuildVisualEdges(aEdgeFrom, aEdgeTo);
 	const CSnapContext Context(GameServer()->GetClientVersion(SnappingClient), Server()->IsSixup(SnappingClient), SnappingClient);
-	for(int i = 0; i < m_Sides; ++i)
+	float Top = m_Pos.y;
+	for(int i = 0; i < NumEdges; ++i)
 	{
+		Top = std::min(Top, std::min(aEdgeFrom[i].y, aEdgeTo[i].y));
 		if(!m_aSnapIds[i].has_value())
 			continue;
-		GameServer()->SnapLaserObject(Context, m_aSnapIds[i].value(), aVertices[(i + 1) % m_Sides], aVertices[i],
+		GameServer()->SnapLaserObject(Context, m_aSnapIds[i].value(), aEdgeTo[i], aEdgeFrom[i],
 			Server()->Tick(), -1, LASERTYPE_DOOR, 0, -1);
 	}
 
@@ -659,11 +695,11 @@ void CHoRigidBody::Snap(int SnappingClient)
 	char aId[MAX_ID_DIGITS + 1];
 	str_format(aId, sizeof(aId), "%d", m_BodyId);
 	const int Digits = str_length(aId);
-	const float DigitWidth = 10.0f;
-	const float DigitHeight = 16.0f;
-	const float Spacing = 3.0f;
+	const float DigitWidth = 24.0f;
+	const float DigitHeight = 40.0f;
+	const float Spacing = 8.0f;
 	const float TotalWidth = Digits * DigitWidth + std::max(0, Digits - 1) * Spacing;
-	const vec2 LabelOrigin = m_Pos + vec2(-TotalWidth * 0.5f, -m_Radius - 24.0f);
+	const vec2 LabelOrigin(m_Pos.x - TotalWidth * 0.5f, Top - DigitHeight - 22.0f);
 	for(int DigitIndex = 0; DigitIndex < Digits && DigitIndex < MAX_ID_DIGITS; ++DigitIndex)
 	{
 		const int Digit = aId[DigitIndex] - '0';
