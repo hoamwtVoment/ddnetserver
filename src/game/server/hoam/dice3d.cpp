@@ -380,7 +380,7 @@ void CHoDice3D::Snap(int SnappingClient)
 		aVisibleVertices[Edge.m_VertexA] = true;
 		aVisibleVertices[Edge.m_VertexB] = true;
 		if(m_aSnapIds[EdgeIndex].has_value())
-			GameServer()->SnapLaserObject(Context, m_aSnapIds[EdgeIndex].value(), aProjected[Edge.m_VertexB], aProjected[Edge.m_VertexA], -1, -1, LASERTYPE_DOOR);
+			GameServer()->SnapLaserObject(Context, m_aSnapIds[EdgeIndex].value(), aProjected[Edge.m_VertexB], aProjected[Edge.m_VertexA], -1, -1, LASERTYPE_DOOR, -1, -1, LASERFLAG_NO_PREDICT);
 	}
 
 	for(int Vertex = 0; Vertex < (int)aProjected.size(); Vertex++)
@@ -388,7 +388,7 @@ void CHoDice3D::Snap(int SnappingClient)
 		if(!aVisibleVertices[Vertex] || !m_aSnapIds[30 + Vertex].has_value())
 			continue;
 		const vec2 Pos = aProjected[Vertex];
-		GameServer()->SnapLaserObject(Context, m_aSnapIds[30 + Vertex].value(), Pos, Pos + vec2(1.0f, 0.0f), -1, -1, LASERTYPE_DOOR);
+		GameServer()->SnapLaserObject(Context, m_aSnapIds[30 + Vertex].value(), Pos, Pos + vec2(1.0f, 0.0f), -1, -1, LASERTYPE_DOOR, -1, -1, LASERFLAG_NO_PREDICT);
 	}
 
 	constexpr float PipX = 17.0f;
