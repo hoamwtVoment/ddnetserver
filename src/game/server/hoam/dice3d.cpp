@@ -60,6 +60,26 @@ namespace
 		return A[0] * B[0] + A[1] * B[1] + A[2] * B[2] + A[3] * B[3];
 	}
 
+	TQuaternion QuaternionConjugate(const TQuaternion &Q)
+	{
+		return {Q[0], -Q[1], -Q[2], -Q[3]};
+	}
+
+	float RotationError(const TQuaternion &Orientation, const TQuaternion &Target, vec3 *pAxis)
+	{
+		TQuaternion Error = QuaternionNormalize(QuaternionMultiply(Target, QuaternionConjugate(Orientation)));
+		if(Error[0] < 0.0f)
+			for(float &Value : Error)
+				Value = -Value;
+		const float Angle = 2.0f * std::acos(std::clamp(Error[0], -1.0f, 1.0f));
+		*pAxis = vec3(Error[1], Error[2], Error[3]);
+		if(length(*pAxis) > 0.000001f)
+			*pAxis = normalize(*pAxis);
+		else
+			*pAxis = vec3();
+		return Angle;
+	}
+
 	TQuaternion CanonicalFaceOrientation(int FaceValue)
 	{
 		switch(FaceValue)
@@ -217,6 +237,7 @@ bool CHoDice3D::HammerHit(vec2 Impulse, vec2 HammererPos)
 		m_AngularVelocity = normalize(m_AngularVelocity) * 0.45f;
 	m_StillTicks = 0;
 	m_Resting = false;
+	m_HasSettleOrientation = false;
 	m_HasBeenThrown = true;
 	m_ResultReported = false;
 	return true;
@@ -250,7 +271,9 @@ void CHoDice3D::Settle()
 {
 	m_Velocity = vec2();
 	m_AngularVelocity = vec3();
-	m_Orientation = NearestStableOrientation(m_Orientation);
+	if(!m_HasSettleOrientation)
+		m_SettleOrientation = NearestStableOrientation(m_Orientation);
+	m_Orientation = m_SettleOrientation;
 	m_Result = DominantFaceValue();
 	m_Resting = true;
 	m_StillTicks = 0;
@@ -298,12 +321,32 @@ void CHoDice3D::Tick()
 	if(AngularSpeed > 0.45f)
 		m_AngularVelocity = normalize(m_AngularVelocity) * 0.45f;
 
+	// Once the cube has lost most of its translational energy, gravity and the
+	// flat floor make it rock toward the nearest stable face. Apply that contact
+	// torque over time instead of visibly snapping the orientation at the end.
+	if(!Supported || length(m_Velocity) > 2.0f || length(m_AngularVelocity) > 0.20f)
+		m_HasSettleOrientation = false;
+	else if(!m_HasSettleOrientation)
+	{
+		m_SettleOrientation = NearestStableOrientation(m_Orientation);
+		m_HasSettleOrientation = true;
+	}
+	if(m_HasSettleOrientation)
+	{
+		vec3 ErrorAxis;
+		const float ErrorAngle = RotationError(m_Orientation, m_SettleOrientation, &ErrorAxis);
+		m_AngularVelocity += ErrorAxis * std::min(ErrorAngle * 0.020f, 0.025f);
+		m_AngularVelocity *= 0.86f;
+	}
+
 	IntegrateOrientation();
 	m_Velocity.x *= Supported ? 0.88f : 0.995f;
 	m_Velocity.y *= 0.995f;
 	m_AngularVelocity *= Supported ? 0.88f : 0.995f;
 
-	if(Supported && length(m_Velocity) < 0.20f && length(m_AngularVelocity) < 0.006f)
+	vec3 RemainingErrorAxis;
+	const float RemainingError = m_HasSettleOrientation ? RotationError(m_Orientation, m_SettleOrientation, &RemainingErrorAxis) : DICE_PI;
+	if(Supported && length(m_Velocity) < 0.20f && length(m_AngularVelocity) < 0.003f && RemainingError < 0.006f)
 		m_StillTicks++;
 	else
 		m_StillTicks = 0;
