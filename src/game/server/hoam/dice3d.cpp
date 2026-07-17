@@ -2,8 +2,10 @@
 
 #include <base/math.h>
 #include <base/str.h>
+
 #include <engine/server.h>
 #include <engine/shared/config.h>
+
 #include <game/collision.h>
 #include <game/server/entities/character.h>
 #include <game/server/gamecontext.h>
@@ -13,163 +15,172 @@
 
 namespace
 {
-using TQuaternion = std::array<float, 4>;
+	using TQuaternion = std::array<float, 4>;
 
-constexpr float DICE_HALF_SIZE = 40.0f;
-constexpr float DICE_BODY_SIZE = DICE_HALF_SIZE * 2.0f;
-constexpr float DICE_PI = 3.14159265358979323846f;
+	constexpr float DICE_HALF_SIZE = 40.0f;
+	constexpr float DICE_BODY_SIZE = DICE_HALF_SIZE * 2.0f;
+	constexpr float DICE_PI = 3.14159265358979323846f;
 
-TQuaternion QuaternionNormalize(const TQuaternion &Q)
-{
-	const float Length = std::sqrt(Q[0] * Q[0] + Q[1] * Q[1] + Q[2] * Q[2] + Q[3] * Q[3]);
-	if(Length < 0.000001f)
-		return {1.0f, 0.0f, 0.0f, 0.0f};
-	return {Q[0] / Length, Q[1] / Length, Q[2] / Length, Q[3] / Length};
-}
-
-TQuaternion QuaternionMultiply(const TQuaternion &A, const TQuaternion &B)
-{
-	return {
-		A[0] * B[0] - A[1] * B[1] - A[2] * B[2] - A[3] * B[3],
-		A[0] * B[1] + A[1] * B[0] + A[2] * B[3] - A[3] * B[2],
-		A[0] * B[2] - A[1] * B[3] + A[2] * B[0] + A[3] * B[1],
-		A[0] * B[3] + A[1] * B[2] - A[2] * B[1] + A[3] * B[0]};
-}
-
-TQuaternion QuaternionFromAxisAngle(vec3 Axis, float Angle)
-{
-	if(length(Axis) < 0.000001f || std::abs(Angle) < 0.000001f)
-		return {1.0f, 0.0f, 0.0f, 0.0f};
-	Axis = normalize(Axis);
-	const float HalfAngle = Angle * 0.5f;
-	const float Sine = std::sin(HalfAngle);
-	return {std::cos(HalfAngle), Axis.x * Sine, Axis.y * Sine, Axis.z * Sine};
-}
-
-vec3 QuaternionRotate(const TQuaternion &Q, vec3 V)
-{
-	const vec3 VectorPart(Q[1], Q[2], Q[3]);
-	const vec3 TwiceCross = cross(VectorPart, V) * 2.0f;
-	return V + TwiceCross * Q[0] + cross(VectorPart, TwiceCross);
-}
-
-float QuaternionDot(const TQuaternion &A, const TQuaternion &B)
-{
-	return A[0] * B[0] + A[1] * B[1] + A[2] * B[2] + A[3] * B[3];
-}
-
-TQuaternion CanonicalFaceOrientation(int FaceValue)
-{
-	switch(FaceValue)
+	TQuaternion QuaternionNormalize(const TQuaternion &Q)
 	{
-	case 1: return {1.0f, 0.0f, 0.0f, 0.0f};
-	case 2: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), -DICE_PI * 0.5f);
-	case 3: return QuaternionFromAxisAngle(vec3(1.0f, 0.0f, 0.0f), DICE_PI * 0.5f);
-	case 4: return QuaternionFromAxisAngle(vec3(1.0f, 0.0f, 0.0f), -DICE_PI * 0.5f);
-	case 5: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), DICE_PI * 0.5f);
-	default: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), DICE_PI);
+		const float Length = std::sqrt(Q[0] * Q[0] + Q[1] * Q[1] + Q[2] * Q[2] + Q[3] * Q[3]);
+		if(Length < 0.000001f)
+			return {1.0f, 0.0f, 0.0f, 0.0f};
+		return {Q[0] / Length, Q[1] / Length, Q[2] / Length, Q[3] / Length};
 	}
-}
 
-TQuaternion NearestStableOrientation(const TQuaternion &Orientation)
-{
-	TQuaternion Best = {1.0f, 0.0f, 0.0f, 0.0f};
-	float BestAlignment = -1.0f;
-	for(int FaceValue = 1; FaceValue <= 6; FaceValue++)
+	TQuaternion QuaternionMultiply(const TQuaternion &A, const TQuaternion &B)
 	{
-		for(int QuarterTurn = 0; QuarterTurn < 4; QuarterTurn++)
+		return {
+			A[0] * B[0] - A[1] * B[1] - A[2] * B[2] - A[3] * B[3],
+			A[0] * B[1] + A[1] * B[0] + A[2] * B[3] - A[3] * B[2],
+			A[0] * B[2] - A[1] * B[3] + A[2] * B[0] + A[3] * B[1],
+			A[0] * B[3] + A[1] * B[2] - A[2] * B[1] + A[3] * B[0]};
+	}
+
+	TQuaternion QuaternionFromAxisAngle(vec3 Axis, float Angle)
+	{
+		if(length(Axis) < 0.000001f || std::abs(Angle) < 0.000001f)
+			return {1.0f, 0.0f, 0.0f, 0.0f};
+		Axis = normalize(Axis);
+		const float HalfAngle = Angle * 0.5f;
+		const float Sine = std::sin(HalfAngle);
+		return {std::cos(HalfAngle), Axis.x * Sine, Axis.y * Sine, Axis.z * Sine};
+	}
+
+	vec3 QuaternionRotate(const TQuaternion &Q, vec3 V)
+	{
+		const vec3 VectorPart(Q[1], Q[2], Q[3]);
+		const vec3 TwiceCross = cross(VectorPart, V) * 2.0f;
+		return V + TwiceCross * Q[0] + cross(VectorPart, TwiceCross);
+	}
+
+	float QuaternionDot(const TQuaternion &A, const TQuaternion &B)
+	{
+		return A[0] * B[0] + A[1] * B[1] + A[2] * B[2] + A[3] * B[3];
+	}
+
+	TQuaternion CanonicalFaceOrientation(int FaceValue)
+	{
+		switch(FaceValue)
 		{
-			const TQuaternion ScreenRotation = QuaternionFromAxisAngle(vec3(0.0f, 0.0f, 1.0f), QuarterTurn * DICE_PI * 0.5f);
-			TQuaternion Candidate = QuaternionNormalize(QuaternionMultiply(ScreenRotation, CanonicalFaceOrientation(FaceValue)));
-			const float SignedAlignment = QuaternionDot(Orientation, Candidate);
-			const float Alignment = std::abs(SignedAlignment);
-			if(Alignment > BestAlignment)
-			{
-				BestAlignment = Alignment;
-				if(SignedAlignment < 0.0f)
-					for(float &Value : Candidate)
-						Value = -Value;
-				Best = Candidate;
-			}
+		case 1: return {1.0f, 0.0f, 0.0f, 0.0f};
+		case 2: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), -DICE_PI * 0.5f);
+		case 3: return QuaternionFromAxisAngle(vec3(1.0f, 0.0f, 0.0f), DICE_PI * 0.5f);
+		case 4: return QuaternionFromAxisAngle(vec3(1.0f, 0.0f, 0.0f), -DICE_PI * 0.5f);
+		case 5: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), DICE_PI * 0.5f);
+		default: return QuaternionFromAxisAngle(vec3(0.0f, 1.0f, 0.0f), DICE_PI);
 		}
 	}
-	return Best;
-}
 
-struct SFace
-{
-	vec3 m_Normal;
-	vec3 m_Right;
-	vec3 m_Down;
-	int m_Value;
-};
-
-constexpr std::array<vec3, 8> gs_aVertices = {
-	vec3(-DICE_HALF_SIZE, -DICE_HALF_SIZE, -DICE_HALF_SIZE),
-	vec3(DICE_HALF_SIZE, -DICE_HALF_SIZE, -DICE_HALF_SIZE),
-	vec3(DICE_HALF_SIZE, DICE_HALF_SIZE, -DICE_HALF_SIZE),
-	vec3(-DICE_HALF_SIZE, DICE_HALF_SIZE, -DICE_HALF_SIZE),
-	vec3(-DICE_HALF_SIZE, -DICE_HALF_SIZE, DICE_HALF_SIZE),
-	vec3(DICE_HALF_SIZE, -DICE_HALF_SIZE, DICE_HALF_SIZE),
-	vec3(DICE_HALF_SIZE, DICE_HALF_SIZE, DICE_HALF_SIZE),
-	vec3(-DICE_HALF_SIZE, DICE_HALF_SIZE, DICE_HALF_SIZE)};
-
-// Face order: front, right, bottom, top, left, back.
-constexpr std::array<SFace, 6> gs_aFaces = {{
-	{vec3(0, 0, 1), vec3(1, 0, 0), vec3(0, 1, 0), 1},
-	{vec3(1, 0, 0), vec3(0, 0, -1), vec3(0, 1, 0), 2},
-	{vec3(0, 1, 0), vec3(1, 0, 0), vec3(0, 0, -1), 3},
-	{vec3(0, -1, 0), vec3(1, 0, 0), vec3(0, 0, 1), 4},
-	{vec3(-1, 0, 0), vec3(0, 0, 1), vec3(0, 1, 0), 5},
-	{vec3(0, 0, -1), vec3(-1, 0, 0), vec3(0, 1, 0), 6},
-}};
-
-struct SEdge
-{
-	int m_VertexA;
-	int m_VertexB;
-	int m_FaceA;
-	int m_FaceB;
-};
-
-constexpr std::array<SEdge, 12> gs_aEdges = {{
-	{0, 1, 3, 5}, {1, 2, 1, 5}, {2, 3, 2, 5}, {3, 0, 4, 5},
-	{4, 5, 0, 3}, {5, 6, 0, 1}, {6, 7, 0, 2}, {7, 4, 0, 4},
-	{0, 4, 3, 4}, {1, 5, 3, 1}, {2, 6, 1, 2}, {3, 7, 2, 4},
-}};
-
-void ConHoDice3D(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	const int ClientId = pResult->GetInteger(0);
-	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pGameServer->m_apPlayers[ClientId])
+	TQuaternion NearestStableOrientation(const TQuaternion &Orientation)
 	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "invalid client ID");
-		return;
+		TQuaternion Best = {1.0f, 0.0f, 0.0f, 0.0f};
+		float BestAlignment = -1.0f;
+		for(int FaceValue = 1; FaceValue <= 6; FaceValue++)
+		{
+			for(int QuarterTurn = 0; QuarterTurn < 4; QuarterTurn++)
+			{
+				const TQuaternion ScreenRotation = QuaternionFromAxisAngle(vec3(0.0f, 0.0f, 1.0f), QuarterTurn * DICE_PI * 0.5f);
+				TQuaternion Candidate = QuaternionNormalize(QuaternionMultiply(ScreenRotation, CanonicalFaceOrientation(FaceValue)));
+				const float SignedAlignment = QuaternionDot(Orientation, Candidate);
+				const float Alignment = std::abs(SignedAlignment);
+				if(Alignment > BestAlignment)
+				{
+					BestAlignment = Alignment;
+					if(SignedAlignment < 0.0f)
+						for(float &Value : Candidate)
+							Value = -Value;
+					Best = Candidate;
+				}
+			}
+		}
+		return Best;
 	}
-	CCharacter *pCharacter = pGameServer->GetPlayerChar(ClientId);
-	if(!pCharacter)
-	{
-		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "the player has no active character");
-		return;
-	}
-	new CHoDice3D(&pGameServer->m_World, pCharacter->GetPos() + vec2(0.0f, -96.0f));
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "spawned a simulated 3D dice");
-}
 
-void ConHoDice3DClear(IConsole::IResult *pResult, void *pUserData)
-{
-	auto *pGameServer = static_cast<CGameContext *>(pUserData);
-	int Removed = 0;
-	for(CEntity *pEntity = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_DICE3D); pEntity; pEntity = pEntity->TypeNext())
+	struct SFace
 	{
-		pEntity->Reset();
-		Removed++;
+		vec3 m_Normal;
+		vec3 m_Right;
+		vec3 m_Down;
+		int m_Value;
+	};
+
+	constexpr std::array<vec3, 8> gs_aVertices = {
+		vec3(-DICE_HALF_SIZE, -DICE_HALF_SIZE, -DICE_HALF_SIZE),
+		vec3(DICE_HALF_SIZE, -DICE_HALF_SIZE, -DICE_HALF_SIZE),
+		vec3(DICE_HALF_SIZE, DICE_HALF_SIZE, -DICE_HALF_SIZE),
+		vec3(-DICE_HALF_SIZE, DICE_HALF_SIZE, -DICE_HALF_SIZE),
+		vec3(-DICE_HALF_SIZE, -DICE_HALF_SIZE, DICE_HALF_SIZE),
+		vec3(DICE_HALF_SIZE, -DICE_HALF_SIZE, DICE_HALF_SIZE),
+		vec3(DICE_HALF_SIZE, DICE_HALF_SIZE, DICE_HALF_SIZE),
+		vec3(-DICE_HALF_SIZE, DICE_HALF_SIZE, DICE_HALF_SIZE)};
+
+	// Face order: front, right, bottom, top, left, back.
+	constexpr std::array<SFace, 6> gs_aFaces = {{
+		{vec3(0, 0, 1), vec3(1, 0, 0), vec3(0, 1, 0), 1},
+		{vec3(1, 0, 0), vec3(0, 0, -1), vec3(0, 1, 0), 2},
+		{vec3(0, 1, 0), vec3(1, 0, 0), vec3(0, 0, -1), 3},
+		{vec3(0, -1, 0), vec3(1, 0, 0), vec3(0, 0, 1), 4},
+		{vec3(-1, 0, 0), vec3(0, 0, 1), vec3(0, 1, 0), 5},
+		{vec3(0, 0, -1), vec3(-1, 0, 0), vec3(0, 1, 0), 6},
+	}};
+
+	struct SEdge
+	{
+		int m_VertexA;
+		int m_VertexB;
+		int m_FaceA;
+		int m_FaceB;
+	};
+
+	constexpr std::array<SEdge, 12> gs_aEdges = {{
+		{0, 1, 3, 5},
+		{1, 2, 1, 5},
+		{2, 3, 2, 5},
+		{3, 0, 4, 5},
+		{4, 5, 0, 3},
+		{5, 6, 0, 1},
+		{6, 7, 0, 2},
+		{7, 4, 0, 4},
+		{0, 4, 3, 4},
+		{1, 5, 3, 1},
+		{2, 6, 1, 2},
+		{3, 7, 2, 4},
+	}};
+
+	void ConHoDice3D(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		const int ClientId = pResult->GetInteger(0);
+		if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pGameServer->m_apPlayers[ClientId])
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "invalid client ID");
+			return;
+		}
+		CCharacter *pCharacter = pGameServer->GetPlayerChar(ClientId);
+		if(!pCharacter)
+		{
+			pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "the player has no active character");
+			return;
+		}
+		new CHoDice3D(&pGameServer->m_World, pCharacter->GetPos() + vec2(0.0f, -96.0f));
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", "spawned a simulated 3D dice");
 	}
-	char aBuf[96];
-	str_format(aBuf, sizeof(aBuf), "removed %d simulated 3D dice", Removed);
-	pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", aBuf);
-}
+
+	void ConHoDice3DClear(IConsole::IResult *pResult, void *pUserData)
+	{
+		auto *pGameServer = static_cast<CGameContext *>(pUserData);
+		int Removed = 0;
+		for(CEntity *pEntity = pGameServer->m_World.FindFirst(CGameWorld::ENTTYPE_HO_DICE3D); pEntity; pEntity = pEntity->TypeNext())
+		{
+			pEntity->Reset();
+			Removed++;
+		}
+		char aBuf[96];
+		str_format(aBuf, sizeof(aBuf), "removed %d simulated 3D dice", Removed);
+		pGameServer->Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "ho_dice3d", aBuf);
+	}
 } // namespace
 
 CHoDice3D::CHoDice3D(CGameWorld *pGameWorld, vec2 Pos) :
@@ -331,17 +342,17 @@ void CHoDice3D::Snap(int SnappingClient)
 
 	for(int Vertex = 0; Vertex < (int)aProjected.size(); Vertex++)
 	{
-		if(!aVisibleVertices[Vertex] || !m_aSnapIds[29 + Vertex].has_value())
+		if(!aVisibleVertices[Vertex] || !m_aSnapIds[30 + Vertex].has_value())
 			continue;
 		const vec2 Pos = aProjected[Vertex];
-		GameServer()->SnapLaserObject(Context, m_aSnapIds[29 + Vertex].value(), Pos, Pos + vec2(1.0f, 0.0f), -1, -1, LASERTYPE_DOOR);
+		GameServer()->SnapLaserObject(Context, m_aSnapIds[30 + Vertex].value(), Pos, Pos + vec2(1.0f, 0.0f), -1, -1, LASERTYPE_DOOR);
 	}
 
 	constexpr float PipX = 17.0f;
 	constexpr float PipY = 19.0f;
 	const std::array<vec2, 4> Corners = {vec2(-PipX, -PipY), vec2(PipX, -PipY), vec2(-PipX, PipY), vec2(PipX, PipY)};
 	const std::array<vec2, 6> Six = {vec2(-PipX, -PipY), vec2(PipX, -PipY), vec2(-PipX, 0), vec2(PipX, 0), vec2(-PipX, PipY), vec2(PipX, PipY)};
-	int PipSnapIndex = 11;
+	int PipSnapIndex = 12;
 	for(int FaceIndex = 0; FaceIndex < (int)gs_aFaces.size(); FaceIndex++)
 	{
 		if(!aVisible[FaceIndex])
@@ -352,14 +363,31 @@ void CHoDice3D::Snap(int SnappingClient)
 		switch(gs_aFaces[FaceIndex].m_Value)
 		{
 		case 1: AddPip(vec2()); break;
-		case 2: AddPip(Corners[0]); AddPip(Corners[3]); break;
-		case 3: AddPip(Corners[0]); AddPip(vec2()); AddPip(Corners[3]); break;
-		case 4: for(const vec2 Offset : Corners) AddPip(Offset); break;
-		case 5: for(const vec2 Offset : Corners) AddPip(Offset); AddPip(vec2()); break;
-		case 6: for(const vec2 Offset : Six) AddPip(Offset); break;
+		case 2:
+			AddPip(Corners[0]);
+			AddPip(Corners[3]);
+			break;
+		case 3:
+			AddPip(Corners[0]);
+			AddPip(vec2());
+			AddPip(Corners[3]);
+			break;
+		case 4:
+			for(const vec2 Offset : Corners)
+				AddPip(Offset);
+			break;
+		case 5:
+			for(const vec2 Offset : Corners)
+				AddPip(Offset);
+			AddPip(vec2());
+			break;
+		case 6:
+			for(const vec2 Offset : Six)
+				AddPip(Offset);
+			break;
 		}
 		const SFace &Face = gs_aFaces[FaceIndex];
-		for(int Pip = 0; Pip < NumPips && PipSnapIndex < 29; Pip++)
+		for(int Pip = 0; Pip < NumPips && PipSnapIndex < 30; Pip++)
 		{
 			const int SnapIndex = PipSnapIndex++;
 			if(!m_aSnapIds[SnapIndex].has_value())

@@ -32,7 +32,9 @@ private:
 	vec2 m_Velocity{};
 	vec3 m_AngularVelocity{};
 	TQuaternion m_Orientation{1.0f, 0.0f, 0.0f, 0.0f};
-	std::array<std::optional<int>, 37> m_aSnapIds;
+	// 12 edges, up to 18 pips and 8 visible vertex caps. Each snapped object
+	// must have a unique ID, otherwise delta snapshots cannot be reconstructed.
+	std::array<std::optional<int>, 38> m_aSnapIds;
 	int m_StillTicks = 0;
 	int m_Result = 1;
 	bool m_Resting = false;
