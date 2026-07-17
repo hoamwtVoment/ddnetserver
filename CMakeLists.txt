@@ -2979,6 +2979,8 @@ if(SERVER)
     gameworld.h
     hoam/deathmsg.cpp
     hoam/deathmsg.h
+    hoam/dice3d.cpp
+    hoam/dice3d.h
     hoam/falldamage.cpp
     hoam/falldamage.h
     hoam/fracture.cpp

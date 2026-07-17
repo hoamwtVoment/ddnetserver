@@ -21,12 +21,13 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gamecontroller.h>
 #include <game/server/hoam/deathmsg.h>
+#include <game/server/hoam/dice3d.h>
 #include <game/server/hoam/falldamage.h>
-#include <game/server/hoam/hp.h>
-#include <game/server/hoam/macehammer.h>
 #include <game/server/hoam/fracture.h>
 #include <game/server/hoam/gojo.h>
+#include <game/server/hoam/hp.h>
 #include <game/server/hoam/lasercannon.h>
+#include <game/server/hoam/macehammer.h>
 #include <game/server/hoam/weaponselect.h>
 #include <game/server/player.h>
 #include <game/server/score.h>
@@ -661,6 +662,7 @@ void CCharacter::FireWeapon()
 
 			Hits++;
 		}
+		Hits += HoDice3DHammerHit(GameServer(), ProjStartPos, m_Pos);
 
 		// if we Hit anything, we have to wait for the reload
 		if(Hits)
