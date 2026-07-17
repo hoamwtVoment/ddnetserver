@@ -12,7 +12,6 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gamemodes/ddnet.h>
 #include <game/server/hoam/gojo.h>
-#include <game/server/hoam/rigidbody.h>
 
 CProjectile::CProjectile(
 	CGameWorld *pGameWorld,
@@ -187,26 +186,6 @@ void CProjectile::Tick()
 	}
 
 	CCharacter *pTargetChr = nullptr;
-	vec2 RigidHit;
-	const vec2 ShotDelta = ColPos - PrevPos;
-	const vec2 ShotDirection = length(ShotDelta) > 0.001f ? normalize(ShotDelta) : m_Direction;
-	const float DirectImpulse = m_Type == WEAPON_GRENADE ? 5.0f : 10.0f;
-	if(HoRigidBodyWeaponHit(GameServer(), PrevPos, ColPos, ShotDirection * DirectImpulse, m_Type, &RigidHit))
-	{
-		if(m_Explosive)
-		{
-			GameServer()->CreateExplosion(RigidHit, m_Owner, m_Type, m_Owner == -1, pOwnerChar ? pOwnerChar->Team() : -1,
-				pOwnerChar ? pOwnerChar->TeamMask() : CClientMask().set());
-			GameServer()->CreateSound(RigidHit, m_SoundImpact, pOwnerChar ? pOwnerChar->TeamMask() : CClientMask().set());
-		}
-		else
-		{
-			GameServer()->CreateDamageInd(RigidHit, -std::atan2(m_Direction.x, m_Direction.y), 10,
-				pOwnerChar ? pOwnerChar->TeamMask() : CClientMask().set());
-		}
-		m_MarkedForDestroy = true;
-		return;
-	}
 
 	if(pOwnerChar ? !pOwnerChar->GrenadeHitDisabled() : g_Config.m_SvHit)
 		pTargetChr = GameServer()->m_World.IntersectCharacter(PrevPos, ColPos, m_Freeze ? 1.0f : 6.0f, ColPos, pOwnerChar, m_Owner);
