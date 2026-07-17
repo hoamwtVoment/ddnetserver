@@ -7,6 +7,7 @@
 #include "gamemodes/mod.h"
 #include "hoam/lang.h"
 #include "hoam/lasercannon.h"
+#include "hoam/rigidbody.h"
 #include "hoam/weaponselect.h"
 #include "player.h"
 #include "score.h"
@@ -406,6 +407,11 @@ void CGameContext::CreateExplosion(vec2 Pos, int Owner, int Weapon, bool NoDamag
 		pEvent->m_X = (int)Pos.x;
 		pEvent->m_Y = (int)Pos.y;
 	}
+
+	float RigidStrength = GlobalTuning()->m_ExplosionStrength;
+	if(Owner >= 0 && Owner < MAX_CLIENTS && m_apPlayers[Owner])
+		RigidStrength = TuningList()[m_apPlayers[Owner]->m_TuneZone].m_ExplosionStrength;
+	HoRigidBodyExplosion(this, Pos, 135.0f, RigidStrength);
 
 	// deal damage
 	CEntity *apEnts[MAX_CLIENTS];
@@ -4935,6 +4941,7 @@ void CGameContext::OnConsoleInit()
 	Console()->Register("mapbug", "s[mapbug]", CFGFLAG_SERVER | CFGFLAG_GAME, ConMapbug, this, "Enable map compatibility mode using the specified bug (example: grenade-doubleexplosion@ddnet.tw)");
 	Console()->Register("switch_open", "i[switch]", CFGFLAG_SERVER | CFGFLAG_GAME, ConSwitchOpen, this, "Whether a switch is deactivated by default (otherwise activated)");
 	Console()->Register("ho_tile", "s['all'|'kill'|'border'|'freeze'|'deepfreeze'|'livefreeze'|'tele'|'speedup'] ?s['off'|'on']", CFGFLAG_SERVER, ConHoTile, this, "Show, disable or enable selected tile effects without changing the map");
+	HoRegisterRigidBodyCommands(this);
 	Console()->Register("pause_game", "", CFGFLAG_SERVER, ConPause, this, "Pause/unpause game");
 	Console()->Register("change_map", "r[map]", CFGFLAG_SERVER | CFGFLAG_STORE, ConChangeMap, this, "Change map");
 	Console()->Register("random_map", "?i[stars] ?i[max stars]", CFGFLAG_SERVER | CFGFLAG_STORE, ConRandomMap, this, "Random map");

@@ -2995,6 +2995,8 @@ if(SERVER)
     hoam/macehammer.h
     hoam/portal.cpp
     hoam/portal.h
+    hoam/rigidbody.cpp
+    hoam/rigidbody.h
     hoam/weaponselect.cpp
     hoam/weaponselect.h
     interactions.cpp

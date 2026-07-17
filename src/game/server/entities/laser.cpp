@@ -13,6 +13,7 @@
 #include <game/server/gamecontext.h>
 #include <game/server/gamemodes/ddnet.h>
 #include <game/server/hoam/gojo.h>
+#include <game/server/hoam/rigidbody.h>
 #include <game/server/player.h>
 
 CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Type) :
@@ -139,6 +140,19 @@ void CLaser::DoBounce()
 		To = SoftTo;
 
 	Res = GameServer()->Collision()->IntersectLineTeleWeapon(m_Pos, To, &Coltile, &To, &z);
+
+	vec2 RigidHit;
+	vec2 RigidImpulse = m_Dir * 8.0f;
+	if(m_Type == WEAPON_SHOTGUN)
+		RigidImpulse = -m_Dir * 12.0f;
+	if(HoRigidBodyWeaponHit(GameServer(), m_Pos, To, RigidImpulse, m_Type, &RigidHit))
+	{
+		m_From = m_Pos;
+		m_Pos = RigidHit;
+		m_Energy = -1;
+		GameServer()->CreateSound(m_Pos, SOUND_LASER_BOUNCE, m_InteractState.CanSeeMask(GameServer()));
+		return;
+	}
 
 	if(!Res && VoidFactor < 0.12f && VoidCid >= 0)
 	{
